@@ -1,148 +1,134 @@
-# CLAUDE.md — Engineering Guide for The Auditable Agent
+# CLAUDE.md — Engineering Guide for Narc
 
-This file governs how code is written in this repo. Read it fully before touching any
-package. It exists to keep independently-built modules compatible and to prevent the
-failure modes that lose hackathons (stubs, faked integrations, contract drift).
+Narc is a **dual submission**: The Agentic Web (Core, Sub-track 1 Autonomous Risk Guardian)
+as primary, and Walrus (Specialized) as a second entry. One codebase satisfies both rubrics.
+Read this fully before touching any package.
 
 ---
 
 ## Prime Directives
 
-1. **No stubs. No mocks of the real integrations.** DeepBook orders hit testnet. MemWal
-   calls hit a real relayer + Walrus on testnet. The LLM is real. If you cannot make an
-   integration work, STOP and flag it in `BLOCKERS.md` — do not paper over it with a
-   fake that "looks done." A faked integration is worse than a missing one because it
-   hides the risk until demo day.
-2. **The §4 contract in `packages/shared` is law.** All cross-module data is a
-   zod-validated type from `shared`. Never redefine a `DecisionRecord` locally. Never
-   change a `shared` schema without updating BOTH workstreams' owners and the fixtures.
-3. **Develop against fixtures, integrate late.** Each workstream must run fully on
-   `shared/fixtures` before depending on the other side's live process. If your module
-   needs the other half running to do anything, the seam is wrong — fix the seam.
-4. **Validate at every boundary.** Anything read from Walrus, the LLM, or DeepBook is
-   parsed with the zod schema before use. `JSON.parse` is always followed by
-   `Schema.parse`. Untrusted bytes never flow into logic unvalidated.
-5. **Testnet only, everywhere.** MemWal defaults to mainnet — you MUST pass
-   `suiNetwork: 'testnet'`. DeepBook client MUST be `env: 'testnet'`. A single mainnet
-   call with real funds is an incident.
+1. **No stubs. No faked integrations.** DeepBook orders hit testnet. MemWal hits a real
+   relayer + Walrus on testnet. The `narc_policy` Move package is deployed to testnet and
+   really gates orders. The LLM is real. Can't make something work → log it in `BLOCKERS.md`;
+   never paper over it with a fake that "looks done."
+2. **`packages/shared` (§4) is law.** All cross-module data is a zod-validated `shared` type.
+   The Move package's deployed ids live in `shared/env.ts`. Schema/ABI changes need both owners.
+3. **Develop against fixtures + the deployed policy, integrate late.** Each half must run on
+   `shared/fixtures` and a testnet-deployed `narc_policy` without the other half's process.
+4. **Validate every boundary.** `JSON.parse` is always followed by `Schema.parse`. Bytes from
+   Walrus, the LLM, or chain are parsed before use.
+5. **Testnet everywhere.** MemWal `suiNetwork:'testnet'` (it DEFAULTS TO MAINNET — override).
+   DeepBook `env:'testnet'`. Move published to testnet. One mainnet call is an incident.
 
 ---
 
-## Repo Layout (pnpm workspace)
+## Repo Layout (pnpm workspace + a Move package)
 
 ```
 packages/
-  shared/      # §4 contract: zod schemas, types, namespaces, env, fixtures   [JOINT, frozen]
-  trader/      # Workstream A: execution, agent loop, mandate self-check, activity
-  memory/      # Workstream B: typed MemWal wrapper (the read/write interface)
-  auditor/     # Workstream B: independent re-evaluation + findings
-  dashboard/   # Workstream B: React live demo + replay
-spike/         # throwaway proof scripts from §3 (kept for reference, not imported)
-BLOCKERS.md    # append-only log of anything that doesn't work yet
+  shared/        # zod schemas, namespaces, env (incl. Move ids), fixtures, evaluateMandate(), riskScore()  [JOINT, frozen]
+  trader/        # WS-A: execution, agent loop, mandate self-check, activity capture
+  narc_policy/   # WS-A: Move package (AgentPolicy shared obj, caps, pause/override/assert_active)
+  memory/        # WS-B: typed MemWal wrapper
+  auditor/       # WS-B: Narc — independent re-eval + risk score + autonomous pause()
+  dashboard/     # WS-B: React live demo + override button + replay
+spike/           # SPIKE proof scripts (kept, not imported)
+BLOCKERS.md      # append-only
 ```
 
-Build order: `shared` → everything else. `pnpm -r build` must pass before any PR merges.
+Build order: `shared` → TS packages. `narc_policy` builds with `sui move build` and is
+published to testnet; its ids go into `shared/env.ts`. `pnpm -r build && pnpm -r test` green
+before any merge.
 
 ---
 
-## Environment & Secrets
-
-All config flows through `packages/shared/src/env.ts` (typed, zod-validated at startup).
-Never read `process.env` directly elsewhere. Required vars (`.env`, gitignored):
+## Environment (`packages/shared/src/env.ts`, zod-validated, fail-fast)
 
 ```
-SUI_NETWORK=testnet                 # hard requirement
-SUI_RPC_URL=                        # getFullnodeUrl('testnet') if blank
-TRADER_PRIVATE_KEY=                 # Ed25519, testnet, funded via faucet
-MEMWAL_RELAYER_URL=                 # http://localhost:8000 if self-hosting (SPIKE-0)
-MEMWAL_ACCOUNT_ID=                  # MemWalAccount object id (from createAccount)
-MEMWAL_DELEGATE_KEY=                # hex, from generateDelegateKey + addDelegateKey
-DEEPBOOK_POOL=                      # testnet pair to trade
+SUI_NETWORK=testnet
+SUI_RPC_URL=                          # getFullnodeUrl('testnet') if blank
+TRADER_PRIVATE_KEY=                   # funded via faucet
+NARC_PRIVATE_KEY=                     # the Narc service signer (holds GuardianCap)
+OWNER_ADDRESS=                        # holds OwnerCap (override authority)
+MEMWAL_RELAYER_URL=                   # http://localhost:8000 if self-hosting
+MEMWAL_ACCOUNT_ID= / MEMWAL_DELEGATE_KEY=
+DEEPBOOK_POOL=
+NARC_POLICY_PACKAGE_ID=               # from publishing narc_policy
+AGENT_POLICY_OBJECT_ID=               # the shared AgentPolicy object
+GUARDIAN_CAP_ID= / OWNER_CAP_ID=
 LLM_API_KEY= / LLM_MODEL=
 ```
 
-A `.env.example` with these keys (no values) is committed. `env.ts` throws a clear error
-naming any missing var on boot — fail fast, never run half-configured.
+`.env.example` committed (keys, no values). Never read `process.env` outside `env.ts`.
 
 ---
 
 ## Integration Notes (the parts that bite)
 
-### MemWal (`@mysten-incubation/memwal`)
-- Package name is `@mysten-incubation/memwal` (note the `-incubation`). Peer deps:
-  `@mysten/sui @mysten/seal @mysten/walrus ai zod` — install them.
-- `MemWal.create({ key, accountId, serverUrl, namespace, suiNetwork: 'testnet' })`.
-- `remember()` is **async/fire-and-forget** — returns `{ job_id, status:'running' }`
-  immediately; the blob isn't on Walrus yet. For anything we need to read back
-  deterministically, use **`rememberAndWait()`** which returns `{ blob_id, ... }` only
-  after the job completes. The agent write path uses `rememberAndWait`.
-- `recall(query, limit?, ns?)` is **semantic top-k**. `distance` is cosine distance —
-  **lower means more similar**. Do not sort ascending-as-worse by accident.
-- For the **audit path**, prefer **`restore(ns)`** (exhaustive — rebuilds the full set
-  from Walrus) over `recall` (lossy top-k). The auditor must see every record.
-- The relayer must be healthy: gate startup on `await memwal.health()`.
-- Encryption is via SEAL behind the relayer; we don't hand-roll crypto.
+### MemWal `@mysten-incubation/memwal`
 
-### DeepBook v3 (`@mysten/deepbook-v3`)
-- `new DeepBookClient({ address, env:'testnet', client: suiClient })` where
-  `suiClient = new SuiClient({ url: getFullnodeUrl('testnet') })`.
-- A `BalanceManager` is a shared object holding balances — **create once, persist its
-  object id** (env or a local `.balance-manager.json`), reuse across runs. Do not create
-  a new one per tick.
-- Every order is a real tx; capture `result.digest` and store it in the `OutcomeRecord`.
-- Trade tiny sizes on testnet. Confirm digests resolve on a Sui testnet explorer.
+- Peers: `@mysten/sui @mysten/seal @mysten/walrus ai zod`.
+- `remember()` is fire-and-forget (`{job_id,status}`); use **`rememberAndWait()`** for writes
+  you must read back (returns `blob_id`).
+- `recall()` is semantic top-k; `distance` is cosine — **lower = closer**. For the AUDIT path
+  use **`restore(ns)`** (exhaustive from Walrus) so the Narc sees EVERY record, not top-k.
+- Gate startup on `await memwal.health()`. Encryption is SEAL behind the relayer.
+
+### DeepBook v3 `@mysten/deepbook-v3`
+
+- `new DeepBookClient({ address, env:'testnet', client: new SuiClient({url:getFullnodeUrl('testnet')}) })`.
+- `BalanceManager` = shared object; create ONCE, persist its id, reuse. Never per-tick.
+- Every order = real tx; capture `result.digest` into the OutcomeRecord. Trade tiny sizes.
+
+### `narc_policy` Move package (capability pattern — verified idiomatic)
+
+- `OwnerCap has key` (NO `store`) = non-transferable owner authority (the human override).
+- `GuardianCap has key, store` = transferred to the Narc signer; gates `pause()`.
+- `AgentPolicy has key` = SHARED object with `paused:bool` + `mandate_hash:vector<u8>`.
+- `assert_active(&AgentPolicy)` aborts (custom error code) if paused — the trader calls it in
+  the SAME PTB as the order, so a paused policy makes the order fail atomically.
+- `pause(&GuardianCap, &mut AgentPolicy, reason_blob, ctx)` stores the Walrus Finding blob id +
+  `event::emit(Paused{...})`. `override_resume(&OwnerCap, &mut AgentPolicy, ctx)` + `Resumed`.
+- Caps are passed by reference (`_: &GuardianCap`) — the type system rejects callers without them;
+  no address checks in the body. Write Move unit tests for pause→assert abort and override→clear.
+- `init` mints + distributes caps and shares the policy. Record all ids in `shared/env.ts`.
 
 ### LLM (Vercel AI SDK)
-- Use `generateText`/`generateObject` with a zod schema so the model returns a typed
-  `intent` + `reasoning`. Never regex the model's prose into fields.
-- Keep the model swappable (config-driven) — model portability is on-thesis for the
-  Walrus track and worth one sentence in the demo.
+
+- `generateObject` with a zod schema for typed `intent` + `reasoning`. Never regex prose.
+- Keep the model swappable (config) — portability is on-thesis for Walrus.
 
 ---
 
-## Coding Standards
+## The Two Invariants (do not break)
 
-- TypeScript, `strict: true`, no `any` at module boundaries (internal `any` only with a
-  `// reason:` comment).
-- Pure functions for all rule evaluation (`evaluateMandate`) — same input, same output,
-  no I/O. This is what lets A's self-check and B's auditor share identical logic.
-- Every exported function has a one-line doc comment stating its contract.
-- Errors are thrown as typed errors and logged structured (JSONL), never swallowed.
-- Each package has a `test` script. The `shared` fixtures are the shared test corpus.
-
----
-
-## The "Same Rules, Two Evaluators" Invariant (do not break)
-
-`evaluateMandate(intent, mandate, state)` lives in `shared` (or is imported identically
-by both `trader` and `auditor`). The trader's self-check and the auditor BOTH call it.
-The ONLY intended divergence is the demo's `--loosen-check`, which disables one rule **in
-the trader's self-check call site only** — never in the function itself, never in the
-auditor. This asymmetry is the demo. If you find yourself writing a second, different
-copy of the rule logic, you are creating a bug, not a feature.
+1. **Same rules, two evaluators.** `evaluateMandate()` (and `riskScore()`) live in `shared`
+   and are called by BOTH the trader self-check (A3) and the Narc (B2). The ONLY divergence is
+   the demo's `--loosen-check`, which disables one rule **at the trader's self-check call site
+   only** — never in the shared fn, never in the Narc. That asymmetry is the demo.
+2. **On-chain mandate matches off-chain.** The `Mandate` is hashed in `shared` and that
+   `mandate_hash` is stored in the Move `AgentPolicy`. If the off-chain mandate and on-chain
+   hash ever disagree, that's a bug the Narc should itself flag.
 
 ---
 
-## Definition of Done (per module — no exceptions)
+## Definition of Done (per module)
 
-A module is done when:
-- It runs against real integrations (not fixtures) end-to-end.
-- Its outputs validate against the `shared` zod schemas.
-- It has a runnable script demonstrating it in isolation (in the package's `examples/`).
+- Runs against real integrations (testnet DeepBook, real MemWal/Walrus, deployed Move pkg, real LLM).
+- Outputs validate against `shared` zod schemas.
+- Has a runnable isolation demo in the package's `examples/`.
 - Anything not working is in `BLOCKERS.md`, not hidden behind a stub.
 
-If you are a subagent picking up a single section (e.g. "A1" or "B2"), your scope is
-exactly that section's bullet list in `PLAN.md`. Read §4 first, build against fixtures,
-expose the interface `PLAN.md` specifies, and do not reach into another module's
-internals — only its `shared`-typed interface.
+Subagents: your scope is exactly your section's bullets in `PLAN.md` (e.g. "A5" or "B2"). Read
+§4 first, build against fixtures + the deployed policy, expose the interface `PLAN.md` specifies,
+and touch other modules only through their `shared`-typed interface.
 
 ---
 
 ## Commit / PR Discipline
 
-- Branch per section: `a1-execution`, `b2-auditor`, etc.
-- A PR may not change `packages/shared` schemas unless its title starts with
-  `contract:` and both workstream owners approve — schema drift is the #1 way parallel
-  work breaks.
-- `pnpm -r build && pnpm -r test` green before merge.
+- Branch per section: `a5-move-policy`, `b2-narc`, etc.
+- `packages/shared` schema or Move ABI changes → PR title starts `contract:`, both owners approve.
+- `pnpm -r build && pnpm -r test` + `sui move test` (for narc_policy) green before merge.
 - Append to `BLOCKERS.md` in the same PR that discovers a blocker.

@@ -80,6 +80,11 @@ LLM_API_KEY= / LLM_MODEL=
 - `new DeepBookClient({ address, env:'testnet', client: new SuiClient({url:getFullnodeUrl('testnet')}) })`.
 - `BalanceManager` = shared object; create ONCE, persist its id, reuse. Never per-tick.
 - Every order = real tx; capture `result.digest` into the OutcomeRecord. Trade tiny sizes.
+- Before every order, run pool parameter checks: expected pool id, allowed pair, min size,
+  lot size, tick size, allowed side.
+- Add fee-aware risk fields: estimated fee bps, fee amount, fee token when available.
+- When Narc pauses, attempt to cancel open DeepBook orders and record cancel tx/error separately
+  from the pause tx.
 
 ### `narc_policy` Move package (capability pattern — verified idiomatic)
 
@@ -110,6 +115,36 @@ LLM_API_KEY= / LLM_MODEL=
 2. **On-chain mandate matches off-chain.** The `Mandate` is hashed in `shared` and that
    `mandate_hash` is stored in the Move `AgentPolicy`. If the off-chain mandate and on-chain
    hash ever disagree, that's a bug the Narc should itself flag.
+
+## Added concrete requirements
+
+- **Dual-Agent Evidence Chain:** Trader writes Decision/Outcome records; Narc writes a
+  `FindingRecord` every tick. Each finding links `reviewedDecisionBlobId`,
+  `reviewedOutcomeBlobId?`, `narcPrevBlobId?`, `traderPrevBlobId?`, verdict, riskScore,
+  actionTaken, pauseTxDigest?, and pauseReasonBlobId?.
+- **Dashboard must show:** live audit timeline, self-check disagreement alert, pause receipt,
+  pool parameter checks, fee-aware risk, and auto-cancel-on-pause status.
+- **Auto-cancel rule:** pause success is independent from cancel success. Record both honestly:
+  `PAUSED_ONCHAIN + CANCEL_FAILED` is valid and visible.
+- **Do not overclaim:** Narc may not stop the already-submitted bad order; the guaranteed demo
+  proof is that the next policy-gated order aborts.
+
+## Edge cases checklist
+
+1. Late Narc pause: prevent future orders and show next abort.
+2. Policy bypass: all order builders include `assert_active`.
+3. GuardianCap leak: reversible pause + guardian/reason in event.
+4. Bad override: require owner reason; warn on active BREACH.
+5. Walrus ordering: validate `prevBlobId`, do not trust restore order.
+6. Memory fork: detect duplicate previous blob heads.
+7. Evaluator drift: shared evaluator only; loosen check only at Trader call site.
+8. Mandate hash mismatch: BREACH finding.
+9. Invalid LLM JSON: no trade.
+10. Decision Walrus write fails: no trade.
+11. DeepBook failure: classify gas/balance/policy/DeepBook separately.
+12. Risk score: always store triggered rules.
+13. Stale price/book: timestamp and flag.
+14. Docs: final README must not contain mojibake.
 
 ---
 

@@ -197,6 +197,10 @@ zod schemas as single source of truth (imported + validated by both halves):
   maxSlippageBps, expiresAt, venue:'deepbook', rules:RuleSpec[]. Hash it → `mandate_hash`
   stored in the Move `AgentPolicy` so on-chain + off-chain mandate provably match.
 - `RuleResult`/`RuleSpec`, `Finding` (Narc's verdict), `RiskInputs`/`RiskScore`.
+- `FindingRecord` (write one every tick, not only breaches): findingId, reviewedDecisionBlobId,
+  reviewedOutcomeBlobId?, verdict PASS/WARN/BREACH, riskScore, triggeredRules, explanation,
+  actionTaken NONE/PAUSED_ONCHAIN/PAUSE_FAILED, pauseTxDigest?, pauseReasonBlobId?,
+  narcPrevBlobId?, traderPrevBlobId?, auditorVersion, model.
 - **Pure shared functions:** `evaluateMandate(intent,mandate,state)` and
   `riskScore(inputs)` — identical logic used by trader self-check (A3) AND Narc (B2).
 - Namespaces: `agent:<id>:decisions`, `agent:<id>:outcomes`, `auditor:<id>:findings`.
@@ -223,7 +227,9 @@ Depends only on §4 (frozen). Owns all DeepBook + all Move.
   **Done when:** published to testnet; ids in `shared/env.ts`; a script drives the full
   pause→abort→override cycle and all txs resolve on explorer.
 - **A1 — DeepBook execution** (`packages/trader/src/execution/`): real client `env:'testnet'`,
-  `BalanceManager` created once & persisted, `placeOrder()` returns real digest. No mocks.
+  `BalanceManager` created once & persisted, `placeOrder()` returns real digest. Add pool
+  parameter checks (pool id, pair, min size, lot size, tick size) and fee-aware risk fields
+  before every order. No mocks.
 - **A2 — Trading loop** (`.../agent/`): live feed → LLM structured decision → DecisionRecord.
   Simple legible strategy (momentum/DCA). Model swappable.
 - **A3 — Mandate self-check** (`.../mandate/`): wires `evaluateMandate()`; failed check blocks
@@ -247,8 +253,10 @@ Depends only on §4 (frozen) + the deployed `narc_policy` ids. Builds entirely o
   Gate startup on `health()`. Done when a fixture round-trips with byte-identical integrity.
 - **B2 — Narc auditor + risk** (`packages/auditor/src/`): independent loop. `restore()` all
   records → recompute `evaluateMandate()` + `riskScore()` (the SHARED fns) → display score →
-  on breach: write Finding to Walrus, then call `pause(GuardianCap, policy, findingBlobId)`
-  as a real testnet tx (this is the Core "autonomous on-chain action"). Flags both
+  write a `FindingRecord` every tick; on breach write Finding to Walrus, then call
+  `pause(GuardianCap, policy, findingBlobId)` as a real testnet tx (this is the Core
+  "autonomous on-chain action"). After pause, attempt DeepBook open-order cancel and record
+  cancel tx or error. Flags both
   (a) executed-despite-fail and (b) self-check disagreeing with recomputation. Done when:
   against the 2 bad fixtures it flags + (in integration) pauses; zero false positives on the 8 good.
 - **B3 — Dashboard** (`packages/dashboard/`, React/Vite): Trader column (decisions + orders
@@ -258,6 +266,31 @@ Depends only on §4 (frozen) + the deployed `narc_policy` ids. Builds entirely o
   the full money-shot is screen-recordable with only the `--loosen-check` flip as intervention.
 - **B4 — Replay** (dashboard replay route): scrub the decision chain by `prevBlobId`; cold-start
   replay purely from Walrus `restore()`. Sells tamper-evident, replayable record for the Walrus track.
+
+### Added demo features
+
+- **Dual-Agent Evidence Chain:** show Trader memory + Narc memory: "Trader said X";
+  "Narc reviewed blob D"; "Narc verdict Y"; "Narc paused in tx T"; "reason blob R".
+- **Live Audit Timeline:** show every tick as PASS/WARN/BREACH with risk and action.
+- **Pause Receipt:** decision blob, finding blob, reason blob, pause tx, breached rule, risk score.
+- **DeepBook extras:** pool parameter checks, fee-aware risk, and auto-cancel open orders on pause.
+
+### Edge cases to handle
+
+1. Narc pause can be late: say it prevents future trading; prove next order aborts.
+2. Trader bypass: every order path must include `assert_active`; flag missing policy ids.
+3. GuardianCap leak: pause is reversible; event shows guardian + reason blob.
+4. Override into same breach: require owner reason and warn if latest verdict is BREACH.
+5. Walrus ordering: sort by tick/createdAtMs and validate `prevBlobId`.
+6. Memory fork: flag duplicate previous blob heads.
+7. Evaluator drift: only shared `evaluateMandate`; `--loosen-check` is Trader call-site only.
+8. Mandate hash mismatch: Narc flags as BREACH.
+9. Invalid LLM JSON: do not trade; write rejected outcome.
+10. Walrus write failure: do not trade if DecisionRecord write fails.
+11. DeepBook normal failure: distinguish policy abort, gas, balance, and DeepBook errors.
+12. Unexplained risk: FindingRecord lists triggered rules.
+13. Stale price/book: timestamp observations and flag stale data.
+14. Encoding polish: final README should have no mojibake.
 
 ---
 

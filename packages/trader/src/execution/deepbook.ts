@@ -6,7 +6,6 @@ import {
   type BalanceManager,
   type DeepBookClient as DeepBookExtension,
   type Pool,
-  type PoolBookParams,
   type PoolTradeParams,
   testnetPools
 } from "@mysten/deepbook-v3";
@@ -65,13 +64,13 @@ export async function getDeepBookClient(env: ASideEnv = loadASideEnv()): Promise
 export async function getOrCreateBalanceManager(env: ASideEnv = loadASideEnv()): Promise<string> {
   const runtime = await createRuntime(env);
   const persisted = await readPersistedBalanceManager(env, runtime.address);
-  if (persisted) return persisted.balanceManagerId;
-  if (env.DEEPBOOK_BALANCE_MANAGER_ID) return env.DEEPBOOK_BALANCE_MANAGER_ID;
+  if (persisted && (await balanceManagerExists(persisted.balanceManagerId, env))) {
+    return persisted.balanceManagerId;
+  }
 
-  const existing = await runtime.client.deepbook.getBalanceManagerIds(runtime.address);
-  if (existing.length > 0) {
-    await persistBalanceManager(env, runtime.address, existing[0]);
-    return existing[0];
+  if (env.DEEPBOOK_BALANCE_MANAGER_ID && (await balanceManagerExists(env.DEEPBOOK_BALANCE_MANAGER_ID, env))) {
+    await persistBalanceManager(env, runtime.address, env.DEEPBOOK_BALANCE_MANAGER_ID);
+    return env.DEEPBOOK_BALANCE_MANAGER_ID;
   }
 
   const tx = new Transaction();
@@ -98,7 +97,33 @@ export async function getOpenOrders(
   env: ASideEnv = loadASideEnv()
 ): Promise<string[]> {
   const runtime = await createRuntime(env, balanceManagerId);
-  return runtime.client.deepbook.accountOpenOrders(runtime.pool.runtimePoolKey, runtime.balanceManagerKey);
+  return withTimeout(
+    runtime.client.deepbook.accountOpenOrders(runtime.pool.runtimePoolKey, runtime.balanceManagerKey),
+    10_000,
+    "Timed out fetching DeepBook open orders."
+  );
+}
+
+export async function depositIntoBalanceManager(
+  balanceManagerId: string,
+  coinKey: string,
+  amount: number,
+  env: ASideEnv = loadASideEnv()
+): Promise<DeepBookOrderResult> {
+  const runtime = await createRuntime(env, balanceManagerId);
+  const tx = new Transaction();
+  runtime.client.deepbook.balanceManager.depositIntoManager(runtime.balanceManagerKey, coinKey, amount)(tx);
+
+  const result = await runtime.client.core.signAndExecuteTransaction({
+    signer: keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY),
+    transaction: tx,
+    include: { effects: true, events: true }
+  });
+
+  return {
+    digest: requireSuccessDigest(result),
+    raw: result
+  };
 }
 
 export async function placeOrder(
@@ -111,10 +136,8 @@ export async function placeOrder(
 
   const checks = checkPoolParameters(intent, mandate, runtime.pool.address);
   assertPoolChecksPass(checks);
-
-  const bookParams = await runtime.client.deepbook.poolBookParams(runtime.pool.runtimePoolKey);
   const baseQuantity = quantityFromIntent(intent);
-  assertRuntimeOrderShape(intent, runtime.pool, bookParams, baseQuantity);
+  assertStaticOrderShape(intent, runtime.pool, baseQuantity, mandate);
 
   const tx = new Transaction();
   appendLimitOrder(tx, runtime, intent, baseQuantity);
@@ -182,6 +205,11 @@ export function unavailableFeeEstimate(intent: TradeIntent) {
   };
 }
 
+export async function getRuntimeWithManager(env: ASideEnv = loadASideEnv()): Promise<DeepBookRuntimeWithManager> {
+  const balanceManagerId = await getOrCreateBalanceManager(env);
+  return createRuntime(env, balanceManagerId);
+}
+
 export function resolveDeepBookPool(poolHint: string): ResolvedDeepBookPool {
   const byKey = testnetPools[poolHint];
   if (byKey) {
@@ -239,28 +267,34 @@ function appendLimitOrder(
   })(tx);
 }
 
-function assertRuntimeOrderShape(
+export function appendDeepBookLimitOrder(
+  tx: Transaction,
+  runtime: DeepBookRuntimeWithManager,
+  intent: TradeIntent
+): void {
+  appendLimitOrder(tx, runtime, intent, quantityFromIntent(intent));
+}
+
+function assertStaticOrderShape(
   intent: TradeIntent,
   pool: ResolvedDeepBookPool,
-  bookParams: PoolBookParams,
-  quantity: number
+  quantity: number,
+  mandate: Mandate
 ): void {
   if (intent.pair !== pool.pair) {
     throw new Error(`Intent pair ${intent.pair} does not match resolved DeepBook pool pair ${pool.pair}.`);
   }
-  if (quantity < bookParams.minSize) {
+  if (quantity <= 0) {
+    throw new Error(`Order base quantity must be positive. Received ${quantity}.`);
+  }
+  if (!isStepMultiple(intent.sizeQuote, mandate.lotSizeQuote)) {
     throw new Error(
-      `Order base quantity ${quantity} is below DeepBook pool minSize ${bookParams.minSize} for ${pool.lookupKey}.`
+      `Order quote size ${intent.sizeQuote} does not align with mandate lotSizeQuote ${mandate.lotSizeQuote}.`
     );
   }
-  if (!isStepMultiple(quantity, bookParams.lotSize)) {
+  if (!isStepMultiple(intent.limitPrice, mandate.tickSize)) {
     throw new Error(
-      `Order base quantity ${quantity} does not align with DeepBook lotSize ${bookParams.lotSize} for ${pool.lookupKey}.`
-    );
-  }
-  if (!isStepMultiple(intent.limitPrice, bookParams.tickSize)) {
-    throw new Error(
-      `Limit price ${intent.limitPrice} does not align with DeepBook tickSize ${bookParams.tickSize} for ${pool.lookupKey}.`
+      `Limit price ${intent.limitPrice} does not align with mandate tickSize ${mandate.tickSize}.`
     );
   }
 }
@@ -337,6 +371,17 @@ function balanceManagerArtifactPath(env: ASideEnv): string {
   return resolve(stateDir, BALANCE_MANAGER_ARTIFACT);
 }
 
+async function balanceManagerExists(balanceManagerId: string, env: ASideEnv): Promise<boolean> {
+  try {
+    const object = await getSuiGrpcClient(env).getObject({
+      objectId: balanceManagerId
+    });
+    return object.object.objectId === balanceManagerId;
+  } catch {
+    return false;
+  }
+}
+
 function requireSuccessDigest(result: {
   $kind: "Transaction" | "FailedTransaction";
   Transaction?: { digest: string; status: { success: boolean; error: unknown } };
@@ -392,4 +437,20 @@ function stringifyError(error: unknown): string {
   } catch {
     return String(error);
   }
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return await new Promise<T>((resolveTimeout, reject) => {
+    const timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolveTimeout(value);
+      },
+      (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      }
+    );
+  });
 }

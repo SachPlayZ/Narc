@@ -2,7 +2,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { loadASideEnv, requirePolicyEnv, type ASideEnv, type Mandate, type TradeIntent } from "@narc/shared";
 import { keypairFromSuiPrivateKey, getSuiClient } from "../sui.js";
 import { assertPoolChecksPass, checkPoolParameters } from "./poolChecks.js";
-import type { DeepBookOrderResult } from "./deepbook.js";
+import { appendDeepBookLimitOrder, getRuntimeWithManager, type DeepBookOrderResult } from "./deepbook.js";
 
 export function buildPolicyGate(tx: Transaction, env: ASideEnv): void {
   const policy = requirePolicyEnv(env);
@@ -17,22 +17,29 @@ export async function placePolicyGatedOrder(
   mandate: Mandate,
   env: ASideEnv = loadASideEnv()
 ): Promise<DeepBookOrderResult> {
-  const checks = checkPoolParameters(intent, mandate, env.DEEPBOOK_POOL);
+  const runtime = await getRuntimeWithManager(env);
+  const checks = checkPoolParameters(intent, mandate, runtime.pool.address);
   assertPoolChecksPass(checks);
   requirePolicyEnv(env);
 
   const tx = new Transaction();
   buildPolicyGate(tx, env);
+  appendDeepBookLimitOrder(tx, runtime, intent);
 
-  throw new Error(
-    "Policy gate transaction is built, but DeepBook order command needs the installed SDK's order builder wired before submit."
-  );
+  const signer = keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY);
+  const result = await runtime.client.core.signAndExecuteTransaction({
+    signer,
+    transaction: tx,
+    include: { effects: true, events: true }
+  });
 
-  // The submit path is intentionally below the throw until the DeepBook command is appended:
-  // const client = getSuiClient(env);
-  // const signer = keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY);
-  // const result = await client.signAndExecuteTransaction({ signer, transaction: tx, options: { showEffects: true } });
-  // return { digest: result.digest, raw: result };
+  if (result.$kind === "FailedTransaction") {
+    throw new Error(JSON.stringify(result.FailedTransaction.status.error));
+  }
+  if (!result.Transaction.status.success) {
+    throw new Error(JSON.stringify(result.Transaction.status.error));
+  }
+  return { digest: result.Transaction.digest, raw: result };
 }
 
 export async function submitPolicyOnlyProbe(env: ASideEnv = loadASideEnv()): Promise<DeepBookOrderResult> {

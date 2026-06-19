@@ -20,6 +20,8 @@
     "policy:pause": "tsx scripts/pause-policy.ts",
     "policy:resume": "tsx scripts/resume-policy.ts",
     "policy:set-hash": "tsx scripts/set-mandate-hash.ts",
+    "open-orders": "tsx scripts/open-orders.ts",
+    "cancel-open-orders": "tsx scripts/cancel-open-orders.ts",
     "a:tick": "tsx examples/run-a-side-tick.ts",
     "deepbook:spike": "tsx examples/deepbook-order.ts"
   },

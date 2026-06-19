@@ -26,13 +26,13 @@ export function loadASideEnv(source: NodeJS.ProcessEnv = process.env): ASideEnv 
     ...fileEnv,
     ...source,
     SUI_NETWORK: source.SUI_NETWORK || "testnet",
-    SUI_RPC_URL: source.SUI_RPC_URL || undefined,
-    DEEPBOOK_BALANCE_MANAGER_ID: source.DEEPBOOK_BALANCE_MANAGER_ID || undefined,
-    NARC_POLICY_PACKAGE_ID: source.NARC_POLICY_PACKAGE_ID || undefined,
-    AGENT_POLICY_OBJECT_ID: source.AGENT_POLICY_OBJECT_ID || undefined,
-    GUARDIAN_CAP_ID: source.GUARDIAN_CAP_ID || undefined,
-    OWNER_CAP_ID: source.OWNER_CAP_ID || undefined,
-    LOCAL_ACTIVITY_DIR: source.LOCAL_ACTIVITY_DIR || ".narc/activity"
+    SUI_RPC_URL: source.SUI_RPC_URL || fileEnv.SUI_RPC_URL || undefined,
+    DEEPBOOK_BALANCE_MANAGER_ID: source.DEEPBOOK_BALANCE_MANAGER_ID || fileEnv.DEEPBOOK_BALANCE_MANAGER_ID || undefined,
+    NARC_POLICY_PACKAGE_ID: source.NARC_POLICY_PACKAGE_ID || fileEnv.NARC_POLICY_PACKAGE_ID || undefined,
+    AGENT_POLICY_OBJECT_ID: source.AGENT_POLICY_OBJECT_ID || fileEnv.AGENT_POLICY_OBJECT_ID || undefined,
+    GUARDIAN_CAP_ID: source.GUARDIAN_CAP_ID || fileEnv.GUARDIAN_CAP_ID || undefined,
+    OWNER_CAP_ID: source.OWNER_CAP_ID || fileEnv.OWNER_CAP_ID || undefined,
+    LOCAL_ACTIVITY_DIR: source.LOCAL_ACTIVITY_DIR || fileEnv.LOCAL_ACTIVITY_DIR || ".narc/activity"
   };
 
   return ASideEnvSchema.parse(normalized);

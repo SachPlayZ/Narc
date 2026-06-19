@@ -160,7 +160,7 @@ export async function cancelLiveOrdersForManager(
 ): Promise<DeepBookOrderResult> {
   const runtime = await createRuntime(env, balanceManagerId);
   const tx = new Transaction();
-  runtime.client.deepbook.deepBook.cancelLiveOrders(
+  runtime.client.deepbook.deepBook.cancelOrders(
     runtime.pool.runtimePoolKey,
     runtime.balanceManagerKey,
     orderIds

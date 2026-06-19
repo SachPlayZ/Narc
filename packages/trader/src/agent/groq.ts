@@ -52,29 +52,7 @@ export async function generateLlmTradeDecision(
   requester: ChatRequester = defaultChatRequester
 ): Promise<LlmDecision> {
   const resolvedEnv = env ?? getDefaultGroqEnv(requester);
-  const responseText = await requester({
-    url: resolvedEnv.GROQ_BASE_URL,
-    headers: {
-      Authorization: `Bearer ${resolvedEnv.GROQ_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: resolvedEnv.GROQ_MODEL,
-      temperature: 0.2,
-      max_completion_tokens: 500,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: buildSystemPrompt()
-        },
-        {
-          role: "user",
-          content: JSON.stringify(buildUserPayload(input))
-        }
-      ]
-    })
-  });
+  const responseText = await requestDecisionCompletion(resolvedEnv, input, requester);
 
   const response = parseChatCompletion(responseText);
   const content = response.choices[0]?.message?.content;
@@ -82,7 +60,7 @@ export async function generateLlmTradeDecision(
     throw new Error("Groq returned an empty decision payload.");
   }
 
-  return LlmDecisionSchema.parse(JSON.parse(content));
+  return LlmDecisionSchema.parse(JSON.parse(extractJsonObject(content)));
 }
 
 function getDefaultGroqEnv(requester: ChatRequester): GroqAgentEnv {
@@ -94,6 +72,49 @@ function getDefaultGroqEnv(requester: ChatRequester): GroqAgentEnv {
     GROQ_API_KEY: "test-key",
     GROQ_MODEL: DEFAULT_GROQ_MODEL,
     GROQ_BASE_URL: DEFAULT_GROQ_BASE_URL
+  };
+}
+
+async function requestDecisionCompletion(
+  env: GroqAgentEnv,
+  input: DecisionPromptInput,
+  requester: ChatRequester
+): Promise<string> {
+  try {
+    return await requester(buildChatRequest(env, input, true));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/json_validate_failed/i.test(message)) {
+      throw error;
+    }
+    return requester(buildChatRequest(env, input, false));
+  }
+}
+
+function buildChatRequest(env: GroqAgentEnv, input: DecisionPromptInput, jsonMode: boolean): ChatRequest {
+  return {
+    url: env.GROQ_BASE_URL,
+    headers: {
+      Authorization: `Bearer ${env.GROQ_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: env.GROQ_MODEL,
+      temperature: 0.1,
+      max_completion_tokens: 500,
+      reasoning_effort: "none",
+      ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+      messages: [
+        {
+          role: "system",
+          content: buildSystemPrompt()
+        },
+        {
+          role: "user",
+          content: JSON.stringify(buildUserPayload(input))
+        }
+      ]
+    })
   };
 }
 
@@ -136,6 +157,26 @@ function buildUserPayload(input: DecisionPromptInput) {
 
 function parseChatCompletion(raw: string): z.infer<typeof ChatCompletionResponseSchema> {
   return ChatCompletionResponseSchema.parse(JSON.parse(raw));
+}
+
+function extractJsonObject(content: string): string {
+  const trimmed = content.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    return trimmed;
+  }
+
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    return fenced[1].trim();
+  }
+
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    return trimmed.slice(start, end + 1);
+  }
+
+  throw new Error(`Groq did not return a JSON object: ${trimmed}`);
 }
 
 async function defaultChatRequester(request: ChatRequest): Promise<string> {

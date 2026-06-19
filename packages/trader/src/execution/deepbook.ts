@@ -259,7 +259,7 @@ function appendLimitOrder(
   runtime.client.deepbook.deepBook.placeLimitOrder({
     poolKey: runtime.pool.runtimePoolKey,
     balanceManagerKey: runtime.balanceManagerKey,
-    clientOrderId: Date.now(),
+    clientOrderId: String(Date.now()),
     price: intent.limitPrice,
     quantity,
     isBid: intent.side === "bid"

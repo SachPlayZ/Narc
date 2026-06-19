@@ -131,6 +131,32 @@ describe("runASideTick", () => {
     expect(result.outcome.status).toBe("FAILED_BALANCE");
   });
 
+  it("records missing policy env as a failed deepbook outcome", async () => {
+    const result = await runASideTick(
+      {
+        agentId: "agent-a",
+        tick: 4,
+        mandate: sampleMandate,
+        market,
+        journal: createMemoryJournal(),
+        prevDecisionBlobId: null,
+        prevOutcomeBlobId: null
+      },
+      {
+        generateTradeDecision: async () => ({
+          intent: deterministicIntent(sampleMandate),
+          reasoning: "test"
+        }),
+        placePolicyGatedOrder: async () => {
+          throw new Error("NARC_POLICY_PACKAGE_ID and AGENT_POLICY_OBJECT_ID are required for policy-gated execution.");
+        }
+      }
+    );
+
+    expect(result.outcome.status).toBe("FAILED_DEEPBOOK");
+    expect(result.outcome.error).toContain("policy-gated execution");
+  });
+
   it("carries the prev blob chain forward", async () => {
     const writes = { decisions: [] as any[], outcomes: [] as any[] };
 

@@ -11,7 +11,7 @@ import {
 import type { ClientWithExtensions } from "@mysten/sui/client";
 import { Transaction } from "@mysten/sui/transactions";
 import { loadASideEnv, type ASideEnv, type Mandate, type TradeIntent } from "@narc/shared";
-import { getSuiClient, keypairFromSuiPrivateKey } from "../sui.js";
+import { getSuiClient, keypairFromSuiPrivateKey, signAndExecuteWithRetry } from "../sui.js";
 import { assertPoolChecksPass, checkPoolParameters } from "./poolChecks.js";
 
 const ACTIVE_POOL_KEY = "NARC_ACTIVE_POOL";
@@ -72,14 +72,11 @@ export async function getOrCreateBalanceManager(env: ASideEnv = loadASideEnv()):
     return env.DEEPBOOK_BALANCE_MANAGER_ID;
   }
 
-  const tx = new Transaction();
-  runtime.client.deepbook.balanceManager.createAndShareBalanceManager()(tx);
-
-  const result = await (getSuiClient(env) as any).signAndExecuteTransaction({
-    signer: keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY),
-    transaction: tx,
-    options: { showEffects: true, showObjectChanges: true, showEvents: true }
-  }) as any;
+  const result = await signAndExecuteWithRetry(env, () => {
+    const tx = new Transaction();
+    runtime.client.deepbook.balanceManager.createAndShareBalanceManager()(tx);
+    return tx;
+  }, { showEffects: true, showObjectChanges: true, showEvents: true }) as any;
 
   const digest = requireSuccessDigest(result);
   const createdId = extractCreatedBalanceManagerId(result);
@@ -110,14 +107,11 @@ export async function depositIntoBalanceManager(
   env: ASideEnv = loadASideEnv()
 ): Promise<DeepBookOrderResult> {
   const runtime = await createRuntime(env, balanceManagerId);
-  const tx = new Transaction();
-  runtime.client.deepbook.balanceManager.depositIntoManager(runtime.balanceManagerKey, coinKey, amount)(tx);
-
-  const result = await (getSuiClient(env) as any).signAndExecuteTransaction({
-    signer: keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY),
-    transaction: tx,
-    options: { showEffects: true, showObjectChanges: true, showEvents: true }
-  }) as any;
+  const result = await signAndExecuteWithRetry(env, () => {
+    const tx = new Transaction();
+    runtime.client.deepbook.balanceManager.depositIntoManager(runtime.balanceManagerKey, coinKey, amount)(tx);
+    return tx;
+  }, { showEffects: true, showObjectChanges: true, showEvents: true }) as any;
 
   return {
     digest: requireSuccessDigest(result),
@@ -138,14 +132,11 @@ export async function placeOrder(
   const baseQuantity = quantityFromIntent(intent);
   assertStaticOrderShape(intent, runtime.pool, baseQuantity, mandate);
 
-  const tx = new Transaction();
-  appendLimitOrder(tx, runtime, intent, baseQuantity);
-
-  const result = await (getSuiClient(env) as any).signAndExecuteTransaction({
-    signer: keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY),
-    transaction: tx,
-    options: { showEffects: true, showObjectChanges: true, showEvents: true }
-  }) as any;
+  const result = await signAndExecuteWithRetry(env, () => {
+    const tx = new Transaction();
+    appendLimitOrder(tx, runtime, intent, baseQuantity);
+    return tx;
+  }, { showEffects: true, showObjectChanges: true, showEvents: true }) as any;
 
   return {
     digest: requireSuccessDigest(result),
@@ -159,18 +150,15 @@ export async function cancelLiveOrdersForManager(
   env: ASideEnv = loadASideEnv()
 ): Promise<DeepBookOrderResult> {
   const runtime = await createRuntime(env, balanceManagerId);
-  const tx = new Transaction();
-  runtime.client.deepbook.deepBook.cancelOrders(
-    runtime.pool.runtimePoolKey,
-    runtime.balanceManagerKey,
-    orderIds
-  )(tx);
-
-  const result = await (getSuiClient(env) as any).signAndExecuteTransaction({
-    signer: keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY),
-    transaction: tx,
-    options: { showEffects: true, showObjectChanges: true, showEvents: true }
-  }) as any;
+  const result = await signAndExecuteWithRetry(env, () => {
+    const tx = new Transaction();
+    runtime.client.deepbook.deepBook.cancelOrders(
+      runtime.pool.runtimePoolKey,
+      runtime.balanceManagerKey,
+      orderIds
+    )(tx);
+    return tx;
+  }, { showEffects: true, showObjectChanges: true, showEvents: true }) as any;
 
   return {
     digest: requireSuccessDigest(result),

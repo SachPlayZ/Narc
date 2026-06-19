@@ -65,6 +65,69 @@ describe("generateLlmTradeDecision", () => {
       )
     ).rejects.toThrow();
   });
+
+  it("rejects empty assistant content", async () => {
+    await expect(
+      generateLlmTradeDecision(
+        {
+          mandate: sampleMandate,
+          pair: "SUI_USDC",
+          midPrice: 1.25,
+          priceFeedTs: Date.now(),
+          deepbookPoolId: sampleMandate.expectedPoolId,
+          signalInputs: { source: "test" }
+        },
+        { GROQ_API_KEY: "test-key", GROQ_MODEL: "qwen/qwen3-32b", GROQ_BASE_URL: "https://example.com" },
+        async () => JSON.stringify({ choices: [{ message: { content: "" } }] })
+      )
+    ).rejects.toThrow("Groq returned an empty decision payload.");
+  });
+
+  it("retries without json mode when Groq json validation fails", async () => {
+    let calls = 0;
+    const decision = await generateLlmTradeDecision(
+      {
+        mandate: sampleMandate,
+        pair: "SUI_USDC",
+        midPrice: 1.25,
+        priceFeedTs: Date.now(),
+        deepbookPoolId: sampleMandate.expectedPoolId,
+        signalInputs: { source: "test" }
+      },
+      { GROQ_API_KEY: "test-key", GROQ_MODEL: "qwen/qwen3-32b", GROQ_BASE_URL: "https://example.com" },
+      async () => {
+        calls += 1;
+        if (calls === 1) {
+          throw new Error("json_validate_failed");
+        }
+
+        return JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: [
+                  "```json",
+                  JSON.stringify({
+                    intent: {
+                      side: "bid",
+                      pair: "SUI_USDC",
+                      sizeQuote: 2,
+                      limitPrice: 1.25
+                    },
+                    reasoning: "Fallback path worked."
+                  }),
+                  "```"
+                ].join("\n")
+              }
+            }
+          ]
+        });
+      }
+    );
+
+    expect(calls).toBe(2);
+    expect(decision.reasoning).toContain("Fallback path");
+  });
 });
 
 describe("deterministicBreachDecision", () => {

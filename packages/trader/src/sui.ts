@@ -4,6 +4,7 @@ import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Secp256k1Keypair } from "@mysten/sui/keypairs/secp256k1";
 import { Secp256r1Keypair } from "@mysten/sui/keypairs/secp256r1";
+import type { Transaction } from "@mysten/sui/transactions";
 import type { ASideEnv } from "@narc/shared";
 
 export function getSuiClient(env: Pick<ASideEnv, "SUI_NETWORK" | "SUI_RPC_URL">): SuiJsonRpcClient {
@@ -26,4 +27,35 @@ export function keypairFromSuiPrivateKey(privateKey: string): Ed25519Keypair | S
   if (decoded.scheme === "Secp256k1") return Secp256k1Keypair.fromSecretKey(decoded.secretKey);
   if (decoded.scheme === "Secp256r1") return Secp256r1Keypair.fromSecretKey(decoded.secretKey);
   throw new Error(`Unsupported private key scheme: ${decoded.scheme}`);
+}
+
+export async function signAndExecuteWithRetry(
+  env: ASideEnv,
+  buildTransaction: () => Transaction,
+  options: Record<string, unknown>,
+  maxAttempts = 2
+): Promise<any> {
+  const client = getSuiClient(env) as any;
+  const signer = keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await client.signAndExecuteTransaction({
+        signer,
+        transaction: buildTransaction(),
+        options
+      });
+    } catch (error) {
+      if (attempt >= maxAttempts || !isRebuildableTxError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error("Transaction submission retry loop exited unexpectedly.");
+}
+
+function isRebuildableTxError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /needs to be rebuilt|unavailable for consumption|Error checking transaction input objects/i.test(message);
 }

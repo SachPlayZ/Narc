@@ -5,7 +5,8 @@ const loosenCheck = process.argv.includes("--loosen-check");
 const breach = process.argv.includes("--breach");
 const market = await readMarketSnapshot();
 const mandate = buildRuntimeMandate(market, {
-  allowedSide: "ask"
+  allowedSide: "ask",
+  maxNotionalQuote: Number(market.midPrice.toFixed(6))
 });
 
 const result = await runASideTick({

@@ -76,11 +76,11 @@ export async function getOrCreateBalanceManager(env: ASideEnv = loadASideEnv()):
   const tx = new Transaction();
   runtime.client.deepbook.balanceManager.createAndShareBalanceManager()(tx);
 
-  const result = await runtime.client.core.signAndExecuteTransaction({
+  const result = await (getSuiClient(env) as any).signAndExecuteTransaction({
     signer: keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY),
     transaction: tx,
     options: { showEffects: true, showObjectChanges: true, showEvents: true }
-  });
+  }) as any;
 
   const digest = requireSuccessDigest(result);
   const createdId = extractCreatedBalanceManagerId(result);
@@ -114,11 +114,11 @@ export async function depositIntoBalanceManager(
   const tx = new Transaction();
   runtime.client.deepbook.balanceManager.depositIntoManager(runtime.balanceManagerKey, coinKey, amount)(tx);
 
-  const result = await runtime.client.core.signAndExecuteTransaction({
+  const result = await (getSuiClient(env) as any).signAndExecuteTransaction({
     signer: keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY),
     transaction: tx,
     options: { showEffects: true, showObjectChanges: true, showEvents: true }
-  });
+  }) as any;
 
   return {
     digest: requireSuccessDigest(result),
@@ -142,11 +142,11 @@ export async function placeOrder(
   const tx = new Transaction();
   appendLimitOrder(tx, runtime, intent, baseQuantity);
 
-  const result = await runtime.client.core.signAndExecuteTransaction({
+  const result = await (getSuiClient(env) as any).signAndExecuteTransaction({
     signer: keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY),
     transaction: tx,
     options: { showEffects: true, showObjectChanges: true, showEvents: true }
-  });
+  }) as any;
 
   return {
     digest: requireSuccessDigest(result),
@@ -167,11 +167,11 @@ export async function cancelLiveOrdersForManager(
     orderIds
   )(tx);
 
-  const result = await runtime.client.core.signAndExecuteTransaction({
+  const result = await (getSuiClient(env) as any).signAndExecuteTransaction({
     signer: keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY),
     transaction: tx,
     options: { showEffects: true, showObjectChanges: true, showEvents: true }
-  });
+  }) as any;
 
   return {
     digest: requireSuccessDigest(result),

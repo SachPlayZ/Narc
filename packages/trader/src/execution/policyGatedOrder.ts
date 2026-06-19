@@ -27,11 +27,11 @@ export async function placePolicyGatedOrder(
   appendDeepBookLimitOrder(tx, runtime, intent);
 
   const signer = keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY);
-  const result = await runtime.client.signAndExecuteTransaction({
+  const result = await (getSuiClient(env) as any).signAndExecuteTransaction({
     signer,
     transaction: tx,
     options: { showEffects: true, showObjectChanges: true, showEvents: true }
-  });
+  }) as any;
 
   if (result.effects?.status?.status && result.effects.status.status !== "success") {
     throw new Error(JSON.stringify(result.effects.status.error));

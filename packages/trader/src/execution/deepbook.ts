@@ -1,6 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { randomUUID } from "node:crypto";
 import {
   deepbook,
   type BalanceManager,
@@ -260,7 +259,7 @@ function appendLimitOrder(
   runtime.client.deepbook.deepBook.placeLimitOrder({
     poolKey: runtime.pool.runtimePoolKey,
     balanceManagerKey: runtime.balanceManagerKey,
-    clientOrderId: randomUUID(),
+    clientOrderId: Date.now(),
     price: intent.limitPrice,
     quantity,
     isBid: intent.side === "bid"

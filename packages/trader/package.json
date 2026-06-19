@@ -15,9 +15,11 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "policy:publish": "tsx scripts/publish-policy.ts",
     "policy:read": "tsx scripts/read-policy.ts",
     "policy:pause": "tsx scripts/pause-policy.ts",
     "policy:resume": "tsx scripts/resume-policy.ts",
+    "policy:set-hash": "tsx scripts/set-mandate-hash.ts",
     "a:tick": "tsx examples/run-a-side-tick.ts",
     "deepbook:spike": "tsx examples/deepbook-order.ts"
   },

@@ -31,4 +31,9 @@ describe("checkPoolParameters", () => {
     const checks = checkPoolParameters({ ...validIntent, side: "ask" }, sampleMandate);
     expect(checks.find((check) => check.name === "allowed_side")?.passed).toBe(false);
   });
+
+  it("fails max notional breaches", () => {
+    const checks = checkPoolParameters({ ...validIntent, sizeQuote: 26 }, sampleMandate);
+    expect(checks.find((check) => check.name === "max_notional")?.passed).toBe(false);
+  });
 });

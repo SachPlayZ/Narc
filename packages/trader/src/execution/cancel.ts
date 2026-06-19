@@ -1,4 +1,5 @@
 import { loadASideEnv, type ASideEnv } from "@narc/shared";
+import { cancelLiveOrdersForManager, getOpenOrders } from "./deepbook.js";
 
 export type CancelOpenOrdersResult = {
   openOrdersFound: number;
@@ -7,10 +8,6 @@ export type CancelOpenOrdersResult = {
   status: "SUCCESS" | "FAILED";
   error?: string;
 };
-
-export async function getOpenOrders(_balanceManagerId: string, _env: ASideEnv = loadASideEnv()): Promise<unknown[]> {
-  return [];
-}
 
 export async function cancelOpenOrders(
   balanceManagerId: string,
@@ -22,11 +19,12 @@ export async function cancelOpenOrders(
       return { openOrdersFound: 0, canceled: 0, status: "SUCCESS" };
     }
 
+    const result = await cancelLiveOrdersForManager(balanceManagerId, openOrders, env);
     return {
       openOrdersFound: openOrders.length,
-      canceled: 0,
-      status: "FAILED",
-      error: "Cancel command needs the installed DeepBook SDK order-cancel builder wired."
+      canceled: openOrders.length,
+      cancelTxDigest: result.digest,
+      status: "SUCCESS"
     };
   } catch (error) {
     return {

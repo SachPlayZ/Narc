@@ -6,18 +6,22 @@ import { getSuiClient, keypairFromSuiPrivateKey } from "../src/sui.js";
 const env = loadASideEnv();
 const policy = requirePolicyEnv(env);
 
-if (!env.GUARDIAN_CAP_ID) {
-  throw new Error("GUARDIAN_CAP_ID is required to pause policy.");
+if (!env.OWNER_CAP_ID) {
+  throw new Error("OWNER_CAP_ID is required to set mandate hash.");
 }
 
-const reasonBlob = process.argv[2] ?? "manual-pause";
+const mandateHash = process.argv[2];
+if (!mandateHash) {
+  throw new Error("Pass the mandate hash as the first argument. Hex with 0x prefix is supported.");
+}
+
 const tx = new Transaction();
 tx.moveCall({
-  target: `${policy.NARC_POLICY_PACKAGE_ID}::narc_policy::pause`,
+  target: `${policy.NARC_POLICY_PACKAGE_ID}::narc_policy::set_mandate_hash`,
   arguments: [
-    tx.object(env.GUARDIAN_CAP_ID),
+    tx.object(env.OWNER_CAP_ID),
     tx.object(policy.AGENT_POLICY_OBJECT_ID),
-    tx.pure.vector("u8", parseByteArgument(reasonBlob))
+    tx.pure.vector("u8", parseByteArgument(mandateHash))
   ]
 });
 

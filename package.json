@@ -5,9 +5,9 @@
   "type": "module",
   "packageManager": "pnpm@10.12.1",
   "scripts": {
-    "build": "pnpm -r --filter './packages/**' build",
-    "test": "pnpm -r --filter './packages/**' test",
-    "typecheck": "pnpm -r --filter './packages/**' typecheck",
+    "build": "corepack pnpm -r --filter './packages/**' build",
+    "test": "corepack pnpm -r --filter './packages/**' test",
+    "typecheck": "corepack pnpm -r --filter './packages/**' typecheck",
     "move:build": "sui move build --path packages/narc_policy",
     "move:test": "sui move test --path packages/narc_policy"
   },

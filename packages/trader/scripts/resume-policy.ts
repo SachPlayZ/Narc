@@ -1,5 +1,6 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { loadASideEnv, requirePolicyEnv } from "@narc/shared";
+import { explorerTxUrl, parseByteArgument } from "../src/policy/admin.js";
 import { getSuiClient, keypairFromSuiPrivateKey } from "../src/sui.js";
 
 const env = loadASideEnv();
@@ -13,7 +14,11 @@ const reason = process.argv[2] ?? "manual-resume";
 const tx = new Transaction();
 tx.moveCall({
   target: `${policy.NARC_POLICY_PACKAGE_ID}::narc_policy::override_resume`,
-  arguments: [tx.object(env.OWNER_CAP_ID), tx.object(policy.AGENT_POLICY_OBJECT_ID), tx.pure.vector("u8", bytes(reason))]
+  arguments: [
+    tx.object(env.OWNER_CAP_ID),
+    tx.object(policy.AGENT_POLICY_OBJECT_ID),
+    tx.pure.vector("u8", parseByteArgument(reason))
+  ]
 });
 
 const client = getSuiClient(env);
@@ -24,12 +29,4 @@ const result = await client.signAndExecuteTransaction({
   options: { showEffects: true, showEvents: true }
 });
 
-console.log(JSON.stringify({ digest: result.digest, explorer: explorer(result.digest) }, null, 2));
-
-function bytes(value: string): number[] {
-  return [...Buffer.from(value, "utf8")];
-}
-
-function explorer(digest: string): string {
-  return `https://suiexplorer.com/txblock/${digest}?network=testnet`;
-}
+console.log(JSON.stringify({ digest: result.digest, explorer: explorerTxUrl(result.digest) }, null, 2));

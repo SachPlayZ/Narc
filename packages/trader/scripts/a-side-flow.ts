@@ -56,6 +56,9 @@ async function runPauseDemo() {
     prevDecisionBlobId: null,
     prevOutcomeBlobId: null
   });
+  const afterFirstCleanup = first.result.outcome.executed && env.DEEPBOOK_BALANCE_MANAGER_ID
+    ? await cancelOpenOrders(env.DEEPBOOK_BALANCE_MANAGER_ID, env)
+    : null;
   const pause = await pausePolicy("a-side-flow-pause", env);
   const pausedState = await waitForPolicyPauseState(true, env);
   const blocked = await executeTick({
@@ -81,6 +84,7 @@ async function runPauseDemo() {
     policyBefore: before,
     steps: {
       first,
+      afterFirstCleanup,
       pause,
       pausedState,
       blocked,

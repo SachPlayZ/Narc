@@ -12,7 +12,7 @@ import {
 import type { ClientWithExtensions } from "@mysten/sui/client";
 import { Transaction } from "@mysten/sui/transactions";
 import { loadASideEnv, type ASideEnv, type Mandate, type TradeIntent } from "@narc/shared";
-import { getSuiGrpcClient, keypairFromSuiPrivateKey } from "../sui.js";
+import { getSuiClient, keypairFromSuiPrivateKey } from "../sui.js";
 import { assertPoolChecksPass, checkPoolParameters } from "./poolChecks.js";
 
 const ACTIVE_POOL_KEY = "NARC_ACTIVE_POOL";
@@ -79,7 +79,7 @@ export async function getOrCreateBalanceManager(env: ASideEnv = loadASideEnv()):
   const result = await runtime.client.core.signAndExecuteTransaction({
     signer: keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY),
     transaction: tx,
-    include: { effects: true, objectTypes: true, events: true }
+    options: { showEffects: true, showObjectChanges: true, showEvents: true }
   });
 
   const digest = requireSuccessDigest(result);
@@ -117,7 +117,7 @@ export async function depositIntoBalanceManager(
   const result = await runtime.client.core.signAndExecuteTransaction({
     signer: keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY),
     transaction: tx,
-    include: { effects: true, events: true }
+    options: { showEffects: true, showObjectChanges: true, showEvents: true }
   });
 
   return {
@@ -145,7 +145,7 @@ export async function placeOrder(
   const result = await runtime.client.core.signAndExecuteTransaction({
     signer: keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY),
     transaction: tx,
-    include: { effects: true, events: true }
+    options: { showEffects: true, showObjectChanges: true, showEvents: true }
   });
 
   return {
@@ -170,7 +170,7 @@ export async function cancelLiveOrdersForManager(
   const result = await runtime.client.core.signAndExecuteTransaction({
     signer: keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY),
     transaction: tx,
-    include: { effects: true, events: true }
+    options: { showEffects: true, showObjectChanges: true, showEvents: true }
   });
 
   return {
@@ -319,7 +319,7 @@ async function createRuntime(env: ASideEnv, balanceManagerId?: string): Promise<
       } satisfies Record<string, BalanceManager>)
     : undefined;
 
-  const client = getSuiGrpcClient(env).$extend(
+  const client = getSuiClient(env).$extend(
     deepbook({
       address,
       pools,
@@ -373,55 +373,47 @@ function balanceManagerArtifactPath(env: ASideEnv): string {
 
 async function balanceManagerExists(balanceManagerId: string, env: ASideEnv): Promise<boolean> {
   try {
-    const object = await getSuiGrpcClient(env).getObject({
-      objectId: balanceManagerId
+    const object = await getSuiClient(env).getObject({
+      id: balanceManagerId
     });
-    return object.object.objectId === balanceManagerId;
+    return object.data?.objectId === balanceManagerId;
   } catch {
     return false;
   }
 }
 
 function requireSuccessDigest(result: {
-  $kind: "Transaction" | "FailedTransaction";
-  Transaction?: { digest: string; status: { success: boolean; error: unknown } };
-  FailedTransaction?: { digest: string; status: { success: boolean; error: unknown } };
+  digest?: string;
+  effects?: { status?: { status?: string; error?: unknown } };
+  objectChanges?: Array<Record<string, unknown>>;
+  errors?: unknown[];
 }): string {
-  if (result.$kind === "FailedTransaction") {
-    const failure = result.FailedTransaction;
-    throw new Error(`DeepBook transaction failed${failure?.digest ? ` (${failure.digest})` : ""}: ${stringifyError(failure?.status.error)}`);
+  const status = result.effects?.status?.status;
+  if (status && status !== "success") {
+    throw new Error(
+      `DeepBook transaction aborted${result.digest ? ` (${result.digest})` : ""}: ${stringifyError(result.effects?.status?.error)}`
+    );
   }
-
-  const success = result.Transaction;
-  if (!success) {
-    throw new Error("DeepBook transaction returned without a success payload.");
+  if (result.errors && result.errors.length > 0) {
+    throw new Error(`DeepBook transaction failed: ${stringifyError(result.errors)}`);
   }
-
-  if (!success.status.success) {
-    throw new Error(`DeepBook transaction aborted (${success.digest}): ${stringifyError(success.status.error)}`);
+  if (!result.digest) {
+    throw new Error("DeepBook transaction returned without a digest.");
   }
-
-  return success.digest;
+  return result.digest;
 }
 
 function extractCreatedBalanceManagerId(result: {
-  $kind: "Transaction" | "FailedTransaction";
-  Transaction?: {
-    effects?: {
-      changedObjects?: Array<{ objectId: string; idOperation?: string }>;
-    };
-    objectTypes?: Record<string, string>;
-  };
+  objectChanges?: Array<Record<string, unknown>>;
 }): string | null {
-  const changedObjects = result.Transaction?.effects?.changedObjects ?? [];
-  const objectTypes = result.Transaction?.objectTypes ?? {};
-  const created = changedObjects.find(
+  const objectChanges = result.objectChanges ?? [];
+  const created = objectChanges.find(
     (item) =>
-      item.idOperation === "Created" &&
-      typeof objectTypes[item.objectId] === "string" &&
-      objectTypes[item.objectId].includes("::balance_manager::BalanceManager")
+      item.type === "created" &&
+      typeof item.objectType === "string" &&
+      item.objectType.includes("::balance_manager::BalanceManager")
   );
-  return created?.objectId ?? null;
+  return typeof created?.objectId === "string" ? created.objectId : null;
 }
 
 function quoteTokenForPair(pair: string): string | null {

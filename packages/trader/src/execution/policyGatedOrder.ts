@@ -27,19 +27,16 @@ export async function placePolicyGatedOrder(
   appendDeepBookLimitOrder(tx, runtime, intent);
 
   const signer = keypairFromSuiPrivateKey(env.TRADER_PRIVATE_KEY);
-  const result = await runtime.client.core.signAndExecuteTransaction({
+  const result = await runtime.client.signAndExecuteTransaction({
     signer,
     transaction: tx,
-    include: { effects: true, events: true }
+    options: { showEffects: true, showObjectChanges: true, showEvents: true }
   });
 
-  if (result.$kind === "FailedTransaction") {
-    throw new Error(JSON.stringify(result.FailedTransaction.status.error));
+  if (result.effects?.status?.status && result.effects.status.status !== "success") {
+    throw new Error(JSON.stringify(result.effects.status.error));
   }
-  if (!result.Transaction.status.success) {
-    throw new Error(JSON.stringify(result.Transaction.status.error));
-  }
-  return { digest: result.Transaction.digest, raw: result };
+  return { digest: result.digest, raw: result };
 }
 
 export async function submitPolicyOnlyProbe(env: ASideEnv = loadASideEnv()): Promise<DeepBookOrderResult> {

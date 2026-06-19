@@ -1,0 +1,36 @@
+{
+  "name": "@narc/trader",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "policy:read": "tsx scripts/read-policy.ts",
+    "policy:pause": "tsx scripts/pause-policy.ts",
+    "policy:resume": "tsx scripts/resume-policy.ts",
+    "a:tick": "tsx examples/run-a-side-tick.ts",
+    "deepbook:spike": "tsx examples/deepbook-order.ts"
+  },
+  "dependencies": {
+    "@mysten/deepbook-v3": "^1.5.1",
+    "@mysten/sui": "^2.19.0",
+    "@narc/shared": "workspace:*",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  }
+}

@@ -262,7 +262,8 @@ function appendLimitOrder(
     clientOrderId: String(Date.now()),
     price: intent.limitPrice,
     quantity,
-    isBid: intent.side === "bid"
+    isBid: intent.side === "bid",
+    payWithDeep: false
   })(tx);
 }
 

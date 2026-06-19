@@ -1,13 +1,18 @@
-import { sampleMandate } from "@narc/shared";
+import { buildRuntimeMandate, readMarketSnapshot } from "../src/agent/index.js";
 import { createLocalJournal, runASideTick } from "../src/activity/index.js";
 
 const loosenCheck = process.argv.includes("--loosen-check");
 const breach = process.argv.includes("--breach");
+const market = await readMarketSnapshot();
+const mandate = buildRuntimeMandate(market, {
+  allowedSide: "ask"
+});
 
 const result = await runASideTick({
   agentId: "trader-a",
   tick: Number(process.env.TICK ?? "0"),
-  mandate: sampleMandate,
+  mandate,
+  market,
   journal: createLocalJournal(process.env.LOCAL_ACTIVITY_DIR ?? ".narc/activity"),
   loosenCheck,
   breach,

@@ -56,12 +56,15 @@ export function parsePolicyPublishResponse(input: unknown): PolicyPublishInfo {
 
 export function parsePolicyStateResponse(input: unknown): PolicyState {
   const response = expectRecord(input, "policy object response");
-  const status = expectString(response.status, "policy response status");
-  if (status !== "VersionFound") {
-    throw new Error(`Policy object lookup returned status ${status}.`);
+  const data = isRecord(response.data) ? response.data : null;
+  const details = data ?? expectRecord(response.details, "policy response details");
+  if (!data) {
+    const status = expectString(response.status, "policy response status");
+    if (status !== "VersionFound") {
+      throw new Error(`Policy object lookup returned status ${status}.`);
+    }
   }
 
-  const details = expectRecord(response.details, "policy response details");
   const content = expectRecord(details.content, "policy object content");
   if (content.dataType !== "moveObject") {
     throw new Error("Policy object content was not a moveObject.");

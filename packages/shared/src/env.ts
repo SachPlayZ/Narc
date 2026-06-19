@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { z } from "zod";
 
 const optionalId = z.string().min(1).optional();
@@ -19,7 +21,9 @@ export const ASideEnvSchema = z.object({
 export type ASideEnv = z.infer<typeof ASideEnvSchema>;
 
 export function loadASideEnv(source: NodeJS.ProcessEnv = process.env): ASideEnv {
+  const fileEnv = source === process.env ? loadDotEnvFile() : {};
   const normalized = {
+    ...fileEnv,
     ...source,
     SUI_NETWORK: source.SUI_NETWORK || "testnet",
     SUI_RPC_URL: source.SUI_RPC_URL || undefined,
@@ -42,4 +46,49 @@ export function requirePolicyEnv(env: ASideEnv): Required<Pick<ASideEnv, "NARC_P
     NARC_POLICY_PACKAGE_ID: env.NARC_POLICY_PACKAGE_ID,
     AGENT_POLICY_OBJECT_ID: env.AGENT_POLICY_OBJECT_ID
   };
+}
+
+function loadDotEnvFile(startDir = process.cwd()): NodeJS.ProcessEnv {
+  const envPath = findUp(".env", startDir);
+  if (!envPath) {
+    return {};
+  }
+
+  const parsed: NodeJS.ProcessEnv = {};
+  const lines = readFileSync(envPath, "utf8").split(/\r?\n/);
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const separator = line.indexOf("=");
+    if (separator <= 0) continue;
+
+    const key = line.slice(0, separator).trim();
+    let value = line.slice(separator + 1).trim();
+    if (
+      (value.startsWith("\"") && value.endsWith("\"")) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    parsed[key] = value;
+  }
+
+  return parsed;
+}
+
+function findUp(target: string, startDir: string): string | null {
+  let current = resolve(startDir);
+  while (true) {
+    const candidate = resolve(current, target);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+
+    const parent = dirname(current);
+    if (parent === current) {
+      return null;
+    }
+    current = parent;
+  }
 }

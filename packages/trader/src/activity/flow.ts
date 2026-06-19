@@ -1,6 +1,7 @@
-import { OutcomeRecordSchema, type Mandate, type OutcomeRecord } from "@narc/shared";
+import { OutcomeRecordSchema, type Mandate, type OutcomeRecord, type OutcomeStatus } from "@narc/shared";
 import { placePolicyGatedOrder } from "../execution/policyGatedOrder.js";
-import { buildDecisionRecord, deterministicIntent } from "../agent/decision.js";
+import { buildDecisionRecord, generateTradeDecision } from "../agent/decision.js";
+import { readMarketSnapshot, type MarketSnapshot } from "../agent/market.js";
 import type { LocalJournal } from "./localJournal.js";
 
 export type RunTickInput = {
@@ -8,54 +9,94 @@ export type RunTickInput = {
   tick: number;
   mandate: Mandate;
   journal: LocalJournal;
+  market?: MarketSnapshot;
   loosenCheck?: boolean;
   breach?: boolean;
   prevDecisionBlobId: string | null;
   prevOutcomeBlobId: string | null;
 };
 
-export async function runASideTick(input: RunTickInput): Promise<{ decisionBlobId: string; outcomeBlobId: string; outcome: OutcomeRecord }> {
-  const intent = deterministicIntent(input.mandate, input.breach);
-  const decision = await buildDecisionRecord({
+export type RunTickDependencies = {
+  readMarketSnapshot?: typeof readMarketSnapshot;
+  generateTradeDecision?: typeof generateTradeDecision;
+  buildDecisionRecord?: typeof buildDecisionRecord;
+  placePolicyGatedOrder?: typeof placePolicyGatedOrder;
+};
+
+export async function runASideTick(
+  input: RunTickInput,
+  deps: RunTickDependencies = {}
+): Promise<{ decisionBlobId: string; outcomeBlobId: string; outcome: OutcomeRecord }> {
+  const market = input.market ?? await (deps.readMarketSnapshot ?? readMarketSnapshot)();
+  const llmDecision = await (deps.generateTradeDecision ?? generateTradeDecision)({
+    mandate: input.mandate,
+    market,
+    breach: input.breach
+  });
+  const intent = llmDecision.intent;
+  const decision = await (deps.buildDecisionRecord ?? buildDecisionRecord)({
     agentId: input.agentId,
     tick: input.tick,
     mandate: input.mandate,
     intent,
-    midPrice: 1.25,
-    reasoning: input.breach ? "Deterministic demo breach order." : "Deterministic under-mandate order.",
+    midPrice: market.midPrice,
+    reasoning: llmDecision.reasoning,
     prevBlobId: input.prevDecisionBlobId,
-    loosenCheck: input.loosenCheck
+    loosenCheck: input.loosenCheck,
+    priceFeedTs: market.priceFeedTs,
+    signalInputs: {
+      ...market.signalInputs,
+      ...(llmDecision.signalInputs ?? {})
+    },
+    deepbookPoolId: market.deepbookPoolId
   });
 
   const decisionBlobId = await input.journal.writeDecision(decision);
 
   if (!decision.mandateCheck.passed) {
     const outcome = await writeOutcome(input, decision.recordId, decisionBlobId, "ABORTED_SELF_CHECK", false, null, "self_check");
-    const outcomeBlobId = await input.journal.writeOutcome(outcome);
+    const outcomeBlobId = await persistOutcome(input.journal, outcome);
     return { decisionBlobId, outcomeBlobId, outcome };
   }
 
   try {
-    const result = await placePolicyGatedOrder(intent, input.mandate);
+    const result = await (deps.placePolicyGatedOrder ?? placePolicyGatedOrder)(intent, input.mandate);
     const outcome = await writeOutcome(input, decision.recordId, decisionBlobId, "EXECUTED", true, result.digest);
-    const outcomeBlobId = await input.journal.writeOutcome(outcome);
+    const outcomeBlobId = await persistOutcome(input.journal, outcome);
     return { decisionBlobId, outcomeBlobId, outcome };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const policyPaused = /E_POLICY_PAUSED|policy.*paused|assert_active/i.test(message);
+    const classified = classifyExecutionFailure(error);
     const outcome = await writeOutcome(
       input,
       decision.recordId,
       decisionBlobId,
-      policyPaused ? "ABORTED_POLICY_PAUSED" : "FAILED_DEEPBOOK",
+      classified.status,
       false,
       null,
-      policyPaused ? "assert_active" : undefined,
-      message
+      classified.abortedBy,
+      classified.error
     );
-    const outcomeBlobId = await input.journal.writeOutcome(outcome);
+    const outcomeBlobId = await persistOutcome(input.journal, outcome);
     return { decisionBlobId, outcomeBlobId, outcome };
   }
+}
+
+export function classifyExecutionFailure(error: unknown): {
+  status: OutcomeStatus;
+  abortedBy?: OutcomeRecord["abortedBy"];
+  error: string;
+} {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/E_POLICY_PAUSED|policy.*paused|assert_active/i.test(message)) {
+    return { status: "ABORTED_POLICY_PAUSED", abortedBy: "assert_active", error: message };
+  }
+  if (/withdraw_with_proof|insufficient.*balance|balance.*insufficient|InsufficientCoinBalance/i.test(message)) {
+    return { status: "FAILED_BALANCE", error: message };
+  }
+  if (/gas|GasBalanceTooLow|No valid gas coins|insufficient gas/i.test(message)) {
+    return { status: "FAILED_GAS", error: message };
+  }
+  return { status: "FAILED_DEEPBOOK", error: message };
 }
 
 async function writeOutcome(
@@ -82,4 +123,21 @@ async function writeOutcome(
     error,
     prevBlobId: input.prevOutcomeBlobId
   });
+}
+
+async function persistOutcome(journal: LocalJournal, outcome: OutcomeRecord): Promise<string> {
+  try {
+    return await journal.writeOutcome(outcome);
+  } catch (firstError) {
+    try {
+      return await journal.writeOutcome(outcome);
+    } catch (secondError) {
+      console.error(
+        "Outcome journal write failed; leaving pending marker.",
+        firstError instanceof Error ? firstError.message : String(firstError),
+        secondError instanceof Error ? secondError.message : String(secondError)
+      );
+      return `pending:${outcome.recordId}`;
+    }
+  }
 }

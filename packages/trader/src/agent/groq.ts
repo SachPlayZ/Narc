@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TradeIntentSchema, type Mandate, type TradeIntent } from "@narc/shared";
+import { loadRepoEnvFile, TradeIntentSchema, type Mandate, type TradeIntent } from "@narc/shared";
 
 const DEFAULT_GROQ_MODEL = "qwen/qwen3-32b";
 const DEFAULT_GROQ_BASE_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -38,10 +38,11 @@ export type ChatRequest = {
 export type ChatRequester = (request: ChatRequest) => Promise<string>;
 
 export function loadGroqAgentEnv(source: NodeJS.ProcessEnv = process.env): GroqAgentEnv {
+  const fileEnv = source === process.env ? loadRepoEnvFile() : {};
   return GroqAgentEnvSchema.parse({
-    GROQ_API_KEY: source.GROQ_API_KEY,
-    GROQ_MODEL: source.GROQ_MODEL || DEFAULT_GROQ_MODEL,
-    GROQ_BASE_URL: source.GROQ_BASE_URL || DEFAULT_GROQ_BASE_URL
+    GROQ_API_KEY: source.GROQ_API_KEY || fileEnv.GROQ_API_KEY,
+    GROQ_MODEL: source.GROQ_MODEL || fileEnv.GROQ_MODEL || DEFAULT_GROQ_MODEL,
+    GROQ_BASE_URL: source.GROQ_BASE_URL || fileEnv.GROQ_BASE_URL || DEFAULT_GROQ_BASE_URL
   });
 }
 

@@ -21,7 +21,7 @@ export const ASideEnvSchema = z.object({
 export type ASideEnv = z.infer<typeof ASideEnvSchema>;
 
 export function loadASideEnv(source: NodeJS.ProcessEnv = process.env): ASideEnv {
-  const fileEnv = source === process.env ? loadDotEnvFile() : {};
+  const fileEnv = source === process.env ? loadRepoEnvFile() : {};
   const normalized = {
     ...fileEnv,
     ...source,
@@ -48,7 +48,7 @@ export function requirePolicyEnv(env: ASideEnv): Required<Pick<ASideEnv, "NARC_P
   };
 }
 
-function loadDotEnvFile(startDir = process.cwd()): NodeJS.ProcessEnv {
+export function loadRepoEnvFile(startDir = process.cwd()): NodeJS.ProcessEnv {
   const envPath = findUp(".env", startDir);
   if (!envPath) {
     return {};

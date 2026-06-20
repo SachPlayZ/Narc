@@ -1,620 +1,319 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import type {
-  DecisionRecord,
-  FindingRecord,
-  MandateArtifact,
-  OutcomeRecord,
-} from "@narc/shared";
+import { useState } from "react";
 import Link from "next/link";
+import useSWR from "swr";
+import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
+import { Transaction } from "@mysten/sui/transactions";
+import type { DecisionRecord, FindingRecord, MandateArtifact } from "@narc/shared";
+import { AgentStatusBanner } from "../../components/AgentStatusBanner";
+import { RiskSparkline } from "../../components/RiskSparkline";
+import { IncidentCard } from "../../components/IncidentCard";
+import { ResumeActions } from "../../components/ResumeActions";
+import { MandateForm, type MandateFormValues } from "../../components/MandateForm";
+import { shortAddr, explorerUrl, verdictColor, scoreColor, timeAgo } from "../../lib/utils";
 
-const EXPLORER_BASE = "https://suiexplorer.com/txblock";
-const POLL_MS = 3000;
+const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-function explorerUrl(digest: string) {
-  return `${EXPLORER_BASE}/${digest}?network=testnet`;
+const PACKAGE_ID = process.env.NEXT_PUBLIC_NARC_POLICY_PACKAGE_ID!;
+const POLICY_ID = process.env.NEXT_PUBLIC_AGENT_POLICY_OBJECT_ID!;
+const OWNER_CAP_ID = process.env.NEXT_PUBLIC_OWNER_CAP_ID!;
+
+function buildResumeTx(reason: string): Transaction {
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${PACKAGE_ID}::narc_policy::override_resume`,
+    arguments: [
+      tx.object(OWNER_CAP_ID),
+      tx.object(POLICY_ID),
+      tx.pure.vector("u8", [...new TextEncoder().encode(reason)]),
+    ],
+  });
+  return tx;
 }
-
-function shortAddr(s: string) {
-  if (s.length <= 16) return s;
-  return `${s.slice(0, 8)}…${s.slice(-6)}`;
-}
-
-function verdictColor(v: string) {
-  if (v === "BREACH") return "text-red-400";
-  if (v === "WARN") return "text-yellow-400";
-  return "text-green-400";
-}
-
-function verdictBg(v: string) {
-  if (v === "BREACH") return "bg-red-900/60 border-red-600";
-  if (v === "WARN") return "bg-yellow-900/60 border-yellow-600";
-  return "bg-green-900/30 border-green-700";
-}
-
-function scoreColor(score: number) {
-  if (score >= 70) return "text-red-400";
-  if (score >= 35) return "text-yellow-400";
-  return "text-green-400";
-}
-
-type PolicyStatus = {
-  paused: boolean;
-  mandateHash: string;
-  objectId: string;
-  lastReasonBlob: string | null;
-  error?: string;
-};
 
 export default function DashboardPage() {
-  const [decisions, setDecisions] = useState<DecisionRecord[]>([]);
-  const [outcomes, setOutcomes] = useState<OutcomeRecord[]>([]);
-  const [findings, setFindings] = useState<FindingRecord[]>([]);
-  const [policyStatus, setPolicyStatus] = useState<PolicyStatus | null>(null);
-  const [mandateArtifact, setMandateArtifact] = useState<MandateArtifact | null>(null);
-  const [resuming, setResuming] = useState(false);
-  const [resumeResult, setResumeResult] = useState<{
-    digest?: string;
-    explorer?: string;
-    error?: string;
-  } | null>(null);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const account = useCurrentAccount();
+  const dAppKit = useDAppKit();
 
-  const fetchAll = useCallback(async () => {
-    const [dRes, oRes, fRes, sRes, mRes] = await Promise.allSettled([
-      fetch("/api/decisions").then((r) => r.json()),
-      fetch("/api/outcomes").then((r) => r.json()),
-      fetch("/api/findings").then((r) => r.json()),
-      fetch("/api/status").then((r) => r.json()),
-      fetch("/api/mandate").then((r) => r.json()),
-    ]);
+  const { data: statusData } = useSWR("/api/status", fetcher, { refreshInterval: 3000 });
+  const { data: agentStatusData } = useSWR("/api/agent/status", fetcher, { refreshInterval: 3000 });
+  const { data: findingsData } = useSWR("/api/findings", fetcher, { refreshInterval: 5000 });
+  const { data: decisionsData } = useSWR("/api/decisions", fetcher, { refreshInterval: 5000 });
+  const { data: mandateData, mutate: refetchMandate } = useSWR("/api/mandate", fetcher, { refreshInterval: 10000 });
 
-    if (dRes.status === "fulfilled" && Array.isArray(dRes.value?.records)) {
-      setDecisions(dRes.value.records);
-    }
-    if (oRes.status === "fulfilled" && Array.isArray(oRes.value?.records)) {
-      setOutcomes(oRes.value.records);
-    }
-    if (fRes.status === "fulfilled" && Array.isArray(fRes.value?.records)) {
-      setFindings(fRes.value.records);
-    }
-    if (sRes.status === "fulfilled") {
-      setPolicyStatus(sRes.value as PolicyStatus);
-    }
-    if (mRes.status === "fulfilled" && mRes.value?.artifact) {
-      setMandateArtifact(mRes.value.artifact as MandateArtifact);
-    } else if (mRes.status === "fulfilled") {
-      setMandateArtifact(null);
-    }
-    setLastRefresh(new Date());
-  }, []);
+  const [resumeLoading, setResumeLoading] = useState(false);
+  const [resumeError, setResumeError] = useState<string>();
+  const [resumeSuccess, setResumeSuccess] = useState<{ digest: string } | null>(null);
+  const [keepPaused, setKeepPaused] = useState(false);
+  const [showMandateEdit, setShowMandateEdit] = useState(false);
+  const [mandateEditLoading, setMandateEditLoading] = useState(false);
+  const [mandateEditError, setMandateEditError] = useState<string>();
+  const [agentStopped, setAgentStopped] = useState(false);
+  const [stoppingAgent, setStoppingAgent] = useState(false);
 
-  useEffect(() => {
-    fetchAll();
-    const id = setInterval(fetchAll, POLL_MS);
-    return () => clearInterval(id);
-  }, [fetchAll]);
+  const isPaused: boolean = statusData?.paused ?? false;
+  const agentRunning: boolean = agentStatusData?.traderRunning ?? false;
+  const findings: FindingRecord[] = findingsData?.records ?? [];
+  const decisions: DecisionRecord[] = decisionsData?.records ?? [];
+  const latestFinding = findings.at(-1);
+  const latestDecision = decisions.at(-1);
+  const riskScore: number = latestFinding?.riskScore?.score ?? 0;
+  const verdict: string = latestFinding?.riskScore?.verdict ?? "PASS";
+  const lastBreachFinding = [...findings].reverse().find(
+    (f) => f.riskScore?.verdict === "BREACH" && (f as Record<string, unknown>).actionTaken === "PAUSED_ONCHAIN"
+  );
+  const artifact: MandateArtifact | null = mandateData?.artifact ?? null;
 
-  async function handleResume() {
-    setResuming(true);
-    setResumeResult(null);
+  const onChainHashRaw: string = statusData?.mandateHash ?? "";
+  const onChainHash = onChainHashRaw.replace(/^0x/, "").toLowerCase();
+  const offChainHash = artifact?.mandateHash?.toLowerCase() ?? "";
+  const hashMatch = onChainHash.length > 0 && onChainHash === offChainHash;
+
+  const sessionTotal = (decisions as Array<Record<string, unknown>>).reduce((sum, d) => {
+    if (d.executed) return sum + Number(d.sizeQuote ?? 0);
+    return sum;
+  }, 0);
+
+  const mandate = artifact?.mandate;
+  const mandateSummary = mandate
+    ? `${mandate.allowedPairs?.[0]?.replace("_", "/") ?? "SUI/USDC"} · ${mandate.allowedSide ? mandate.allowedSide.toUpperCase() + " only" : "Both"} · max ${mandate.maxNotionalQuote} USDC/trade`
+    : "";
+
+  async function handleOverrideResume(reason: string): Promise<{ digest: string }> {
+    setResumeLoading(true);
+    setResumeError(undefined);
     try {
-      const res = await fetch("/api/resume", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: "dashboard-override-resume" }),
-      });
-      const data = await res.json();
-      setResumeResult(data);
-      // Refresh status after short delay
-      setTimeout(fetchAll, 1500);
+      let digest: string;
+
+      if (account) {
+        const tx = buildResumeTx(reason);
+        const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
+        if (result.FailedTransaction) {
+          throw new Error(result.FailedTransaction.status.error?.message ?? "Transaction failed");
+        }
+        digest = result.Transaction.digest;
+      } else {
+        const res = await fetch("/api/resume", { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Resume failed");
+        digest = data.digest;
+      }
+
+      await fetch("/api/agent/restart", { method: "POST" });
+      setResumeSuccess({ digest });
+      return { digest };
     } catch (err) {
-      setResumeResult({
-        error: err instanceof Error ? err.message : String(err),
-      });
+      const msg = err instanceof Error ? err.message : String(err);
+      setResumeError(msg);
+      throw err;
     } finally {
-      setResuming(false);
+      setResumeLoading(false);
     }
   }
 
-  const latestFinding = findings.at(-1);
-  const latestDecision = decisions.at(-1);
-  const latestOutcome = outcomes.at(-1);
+  async function handleSaveMandate(values: MandateFormValues) {
+    setMandateEditLoading(true);
+    setMandateEditError(undefined);
+    try {
+      const res = await fetch("/api/mandate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(values),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      await refetchMandate();
+      setShowMandateEdit(false);
+    } catch (err) {
+      setMandateEditError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setMandateEditLoading(false);
+    }
+  }
 
-  const riskScore = latestFinding?.riskScore.score ?? 0;
-  const verdict = latestFinding?.riskScore.verdict ?? "PASS";
+  async function handleStop() {
+    setStoppingAgent(true);
+    await fetch("/api/agent/stop", { method: "POST" });
+    setAgentStopped(true);
+    setStoppingAgent(false);
+  }
 
-  const isPaused = policyStatus?.paused ?? false;
-  const mandate = mandateArtifact?.mandate ?? null;
-  const mandateHashMatches = mandateArtifact && policyStatus
-    ? `0x${mandateArtifact.mandateHash}`.toLowerCase() === policyStatus.mandateHash.toLowerCase()
-    : null;
+  async function handleRestart() {
+    setAgentStopped(false);
+    await fetch("/api/agent/restart", { method: "POST" });
+  }
+
+  const ld = latestDecision as Record<string, unknown> | undefined;
+  const ldIntent = ld?.intent as Record<string, unknown> | undefined;
 
   return (
-    <div className="min-h-screen bg-zinc-900 text-zinc-100 p-4 font-sans">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-50">
-            Narc — Autonomous Risk Guardian
-          </h1>
-          <p className="text-sm text-zinc-400 mt-0.5">
-            Live audit dashboard · Sui testnet
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          <Link
-            href="/replay"
-            className="text-sm text-zinc-400 hover:text-zinc-200 underline underline-offset-2"
-          >
-            Replay →
+    <div className="min-h-screen p-6 max-w-4xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-zinc-100">Narc</h1>
+        <div className="flex gap-4 text-sm">
+          <Link href="/mandate" className="text-zinc-400 hover:text-zinc-200 transition-colors">
+            Mandate →
           </Link>
-          {lastRefresh && (
-            <span className="text-xs text-zinc-500 font-mono">
-              Last updated: {lastRefresh.toLocaleTimeString()}
+          <Link href="/history" className="text-zinc-400 hover:text-zinc-200 transition-colors">
+            History →
+          </Link>
+        </div>
+      </div>
+
+      <AgentStatusBanner running={agentRunning && !agentStopped} paused={isPaused} mandateSummary={mandateSummary} />
+
+      {isPaused && !keepPaused && (
+        <div className="bg-red-900/40 border border-red-600 rounded-lg p-6 space-y-6">
+          <div>
+            <h2 className="text-2xl font-bold text-red-300">⬛ AGENT PAUSED</h2>
+            <p className="text-zinc-300 mt-1">
+              Narc detected a breach and paused your agent on-chain.
+            </p>
+          </div>
+
+          {lastBreachFinding && (
+            <IncidentCard finding={lastBreachFinding} decisions={decisions} />
+          )}
+
+          {resumeSuccess ? (
+            <div className="p-3 bg-green-900/30 border border-green-700 rounded text-green-300 text-sm">
+              ✓ Trading resumed. Tx:{" "}
+              <a
+                href={explorerUrl(resumeSuccess.digest)}
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-400 hover:underline font-mono"
+              >
+                {shortAddr(resumeSuccess.digest)} →
+              </a>
+            </div>
+          ) : showMandateEdit ? (
+            <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4">
+              <h3 className="text-zinc-300 font-semibold mb-4">Adjust Mandate</h3>
+              <MandateForm
+                initialValues={mandate ? {
+                  maxNotionalQuote: mandate.maxNotionalQuote,
+                  maxCumulativeNotionalQuote: mandate.maxCumulativeNotionalQuote,
+                  allowedPairs: mandate.allowedPairs,
+                  allowedSide: mandate.allowedSide as "bid" | "ask" | undefined,
+                  maxSlippageBps: mandate.maxSlippageBps,
+                  expiresInHours: 24,
+                } : undefined}
+                onSubmit={async (values) => {
+                  await handleSaveMandate(values);
+                  await handleOverrideResume("Mandate adjusted and resumed");
+                }}
+                submitLabel="Save & Resume"
+                isLoading={mandateEditLoading}
+                error={mandateEditError}
+              />
+              <button
+                onClick={() => setShowMandateEdit(false)}
+                className="mt-2 text-zinc-500 text-sm hover:text-zinc-300"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <ResumeActions
+              onOverrideResume={handleOverrideResume}
+              onAdjustMandate={() => setShowMandateEdit(true)}
+              onKeepPaused={() => setKeepPaused(true)}
+              isLoading={resumeLoading}
+              error={resumeError}
+            />
+          )}
+        </div>
+      )}
+
+      {keepPaused && isPaused && (
+        <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 flex items-center justify-between">
+          <span className="text-zinc-300 text-sm">Agent is paused. Investigate and resume when ready.</span>
+          <button
+            onClick={() => setKeepPaused(false)}
+            className="text-orange-400 hover:text-orange-300 text-sm font-semibold"
+          >
+            Resume when ready
+          </button>
+        </div>
+      )}
+
+      {!isPaused && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 space-y-3">
+            <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Risk</h2>
+            <RiskSparkline findings={findings} />
+            <p className="font-mono text-sm">
+              <span className={verdictColor(verdict)}>{verdict}</span>
+              <span className="text-zinc-400"> · </span>
+              <span className={scoreColor(riskScore)}>{riskScore}/100</span>
+            </p>
+          </div>
+
+          <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 space-y-3">
+            <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Last activity</h2>
+            {latestDecision && ldIntent ? (
+              <>
+                <p className="text-zinc-300 text-sm">
+                  Last trade{" "}
+                  <span className="text-zinc-400">{timeAgo(ld!.ts as number)}</span>
+                </p>
+                <p className="font-mono text-sm text-zinc-100">
+                  {String(ldIntent.side).toUpperCase()} {String(ldIntent.pair)} · {Number(ldIntent.sizeQuote).toFixed(2)} USDC @ {Number(ldIntent.limitPrice).toFixed(4)}
+                </p>
+                {ld!.reasoning && (
+                  <p className="text-zinc-400 text-sm italic">
+                    {String(ld!.reasoning).slice(0, 120)}…
+                  </p>
+                )}
+                <p className="text-xs text-zinc-500">
+                  Session total{" "}
+                  <span className="font-mono text-zinc-300">{sessionTotal.toFixed(2)} USDC</span>
+                  {mandate && (
+                    <span> of {mandate.maxCumulativeNotionalQuote} USDC daily limit</span>
+                  )}
+                </p>
+              </>
+            ) : (
+              <p className="text-zinc-500 text-sm">No trades yet</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between text-xs text-zinc-500 pt-2">
+        <div className="flex items-center gap-2 font-mono">
+          <span>Mandate hash</span>
+          {statusData?.mandateHash ? (
+            <span>{shortAddr(statusData.mandateHash)}</span>
+          ) : (
+            <span>—</span>
+          )}
+          {statusData?.mandateHash && (
+            <span className={hashMatch ? "text-green-400" : "text-yellow-400"}>
+              {hashMatch ? "✓ matches" : "⚠ mismatch"}
             </span>
           )}
-          <span
-            className={`text-xs font-bold px-3 py-1 rounded-full border ${
-              isPaused
-                ? "bg-red-900/60 border-red-500 text-red-300"
-                : "bg-green-900/40 border-green-600 text-green-300"
-            }`}
+        </div>
+
+        {!agentStopped ? (
+          <button
+            onClick={handleStop}
+            disabled={stoppingAgent}
+            className="text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
           >
-            Policy: {isPaused ? "PAUSED" : "ACTIVE"}
-          </span>
-        </div>
-      </div>
-
-      {/* 3-column layout */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        {/* LEFT: Trader column */}
-        <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4">
-          <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-3">
-            Trader
-          </h2>
-          {decisions.length === 0 ? (
-            <p className="text-zinc-500 text-sm">No decisions yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {decisions
-                .slice(-10)
-                .reverse()
-                .map((d) => {
-                  const outcome = outcomes.find(
-                    (o) => o.decisionRecordId === d.recordId
-                  );
-                  const passed = d.mandateCheck.passed;
-                  return (
-                    <div
-                      key={d.recordId}
-                      className={`rounded border p-2 text-xs font-mono ${
-                        passed
-                          ? "bg-green-900/20 border-green-800"
-                          : "bg-red-900/20 border-red-800"
-                      }`}
-                    >
-                      <div className="flex justify-between items-center mb-0.5">
-                        <span className="text-zinc-300">
-                          tick #{d.tick} ·{" "}
-                          <span
-                            className={
-                              passed ? "text-green-400" : "text-red-400"
-                            }
-                          >
-                            {passed ? "PASS" : "FAIL"}
-                          </span>
-                        </span>
-                        <span className="text-zinc-500">
-                          {new Date(d.ts).toLocaleTimeString()}
-                        </span>
-                      </div>
-                      <div className="text-zinc-300">
-                        {d.intent.side.toUpperCase()} {d.intent.pair} ·{" "}
-                        {d.intent.sizeQuote.toFixed(2)} USDC @{" "}
-                        {d.intent.limitPrice.toFixed(4)}
-                      </div>
-                      {outcome?.txDigest && (
-                        <div className="mt-0.5">
-                          <a
-                            href={explorerUrl(outcome.txDigest)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-400 hover:text-blue-300"
-                          >
-                            tx: {shortAddr(outcome.txDigest)}
-                          </a>
-                          <span className="ml-2 text-zinc-500">
-                            {outcome.status}
-                          </span>
-                        </div>
-                      )}
-                      {outcome && !outcome.txDigest && (
-                        <div className="mt-0.5 text-zinc-500">
-                          {outcome.status}
-                          {outcome.error && ` · ${outcome.error.slice(0, 60)}`}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-            </div>
-          )}
-        </div>
-
-        {/* CENTER: Risk gauge + mandate */}
-        <div className="space-y-4">
-          {/* Risk gauge */}
-          <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4">
-            <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-3">
-              Risk Score
-            </h2>
-            <div className="flex flex-col items-center py-2">
-              <span
-                className={`text-7xl font-bold tabular-nums ${scoreColor(
-                  riskScore
-                )}`}
-              >
-                {Math.round(riskScore)}
-              </span>
-              <span className="text-zinc-400 text-sm mt-1">/ 100</span>
-              <span
-                className={`mt-3 text-sm font-bold px-4 py-1 rounded-full border ${verdictBg(
-                  verdict
-                )} ${verdictColor(verdict)}`}
-              >
-                {verdict}
-              </span>
-            </div>
-
-            {latestFinding?.triggeredRules &&
-              latestFinding.triggeredRules.length > 0 && (
-                <div className="mt-3 text-xs">
-                  <div className="text-zinc-400 mb-1">Triggered rules:</div>
-                  {latestFinding.triggeredRules.map((r) => (
-                    <div key={r.ruleId} className="text-red-400 font-mono">
-                      · {r.ruleId}: {r.message}
-                    </div>
-                  ))}
-                </div>
-              )}
-          </div>
-
-          {/* Mandate panel */}
-          <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4">
-            <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-3">
-              Active Mandate
-            </h2>
-            {mandate ? (
-              <dl className="text-xs space-y-1 font-mono">
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Pair:</span>
-                  <span className="text-zinc-100">{mandate.allowedPairs.join(", ")}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Max notional:</span>
-                  <span className="text-zinc-100">
-                    {mandate.maxNotionalQuote.toFixed(2)} USDC
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Min order:</span>
-                  <span className="text-zinc-100">
-                    {mandate.minOrderSizeQuote.toFixed(4)} quote
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Tick / lot:</span>
-                  <span className="text-zinc-100">
-                    {mandate.tickSize} / {mandate.lotSizeQuote}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400">Expires:</span>
-                  <span className="text-zinc-100">
-                    {new Date(mandate.expiresAt).toLocaleTimeString()}
-                  </span>
-                </div>
-              </dl>
-            ) : (
-              <p className="text-zinc-500 text-sm">No mandate data yet.</p>
-            )}
-
-            {policyStatus && !policyStatus.error && (
-              <div className="mt-3 pt-3 border-t border-zinc-700 text-xs font-mono">
-                <div className="text-zinc-400 mb-1">Mandate hash (on-chain):</div>
-                <div className="text-zinc-300 break-all">
-                  {shortAddr(policyStatus.mandateHash)}
-                </div>
-                {mandateArtifact && (
-                  <div className="mt-2">
-                    <div className="text-zinc-400 mb-1">Mandate hash (artifact):</div>
-                    <div className="text-zinc-300 break-all">
-                      {shortAddr(`0x${mandateArtifact.mandateHash}`)}
-                    </div>
-                    <div className={`mt-1 ${mandateHashMatches ? "text-green-400" : "text-yellow-300"}`}>
-                      {mandateHashMatches ? "hashes match" : "hash mismatch"}
-                    </div>
-                  </div>
-                )}
-                {policyStatus.lastReasonBlob && (
-                  <div className="mt-2">
-                    <span className="text-zinc-400">Last pause reason: </span>
-                    <span className="text-red-300">
-                      {policyStatus.lastReasonBlob}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Execution diagnostics */}
-          <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4">
-            <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-3">
-              Execution Diagnostics
-            </h2>
-            {latestDecision ? (
-              <div className="space-y-3 text-xs font-mono">
-                <div>
-                  <div className="text-zinc-400 mb-1">Pool checks</div>
-                  <div className="space-y-1">
-                    {latestDecision.poolChecks.map((check) => (
-                      <div key={check.name} className="flex justify-between gap-2">
-                        <span className="text-zinc-400">{check.name}</span>
-                        <span className={check.passed ? "text-green-400" : "text-red-400"}>
-                          {check.passed ? "PASS" : "FAIL"}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="border-t border-zinc-700 pt-3">
-                  <div className="text-zinc-400 mb-1">Fee estimate</div>
-                  <div className="flex justify-between">
-                    <span className="text-zinc-400">Source</span>
-                    <span className="text-zinc-100">{latestDecision.feeEstimate.source}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-zinc-400">Bps</span>
-                    <span className="text-zinc-100">{latestDecision.feeEstimate.estimatedFeeBps}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-zinc-400">Amount</span>
-                    <span className="text-zinc-100">
-                      {latestDecision.feeEstimate.feeAmountQuote ?? "n/a"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-zinc-400">Token</span>
-                    <span className="text-zinc-100">{latestDecision.feeEstimate.feeToken ?? "n/a"}</span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <p className="text-zinc-500 text-sm">No decision diagnostics yet.</p>
-            )}
-          </div>
-
-          {/* Override & Resume button */}
-          <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4">
-            <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-3">
-              Owner Override
-            </h2>
-            <button
-              onClick={handleResume}
-              disabled={!isPaused || resuming}
-              className={`w-full py-2 px-4 rounded text-sm font-semibold transition-colors ${
-                isPaused && !resuming
-                  ? "bg-orange-600 hover:bg-orange-500 text-white cursor-pointer"
-                  : "bg-zinc-700 text-zinc-500 cursor-not-allowed"
-              }`}
-            >
-              {resuming ? "Submitting…" : "Override & Resume"}
-            </button>
-            {!isPaused && (
-              <p className="text-xs text-zinc-500 mt-2 text-center">
-                Policy is not paused
-              </p>
-            )}
-            {resumeResult && (
-              <div className="mt-3 text-xs font-mono">
-                {resumeResult.error ? (
-                  <div className="text-red-400">{resumeResult.error}</div>
-                ) : (
-                  <div>
-                    <div className="text-green-400">Resume tx submitted</div>
-                    {resumeResult.explorer && (
-                      <a
-                        href={resumeResult.explorer}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-400 hover:text-blue-300 break-all"
-                      >
-                        {shortAddr(resumeResult.digest ?? "")}
-                      </a>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* RIGHT: Narc column */}
-        <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4">
-          <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-3">
-            Narc Findings
-          </h2>
-          {findings.length === 0 ? (
-            <p className="text-zinc-500 text-sm">No findings yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {findings
-                .slice(-10)
-                .reverse()
-                .map((f) => (
-                  <div
-                    key={f.findingId}
-                    className={`rounded border p-2 text-xs font-mono ${verdictBg(
-                      f.verdict
-                    )}`}
-                  >
-                    <div className="flex justify-between items-center mb-0.5">
-                      <span className={`font-bold ${verdictColor(f.verdict)}`}>
-                        {f.verdict}
-                      </span>
-                      <span className="text-zinc-500">
-                        tick #{f.tick} · {new Date(f.ts).toLocaleTimeString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-zinc-400">score:</span>
-                      <span className={scoreColor(f.riskScore.score)}>
-                        {Math.round(f.riskScore.score)}
-                      </span>
-                    </div>
-                    {f.selfCheckDisagreement && (
-                      <div className="text-yellow-300 mt-0.5">
-                        ⚠ self-check disagreement
-                      </div>
-                    )}
-                    <div className="text-zinc-400 mt-0.5">
-                      {f.actionTaken}
-                    </div>
-                    {f.pauseTxDigest && (
-                      <div className="mt-0.5">
-                        <a
-                          href={explorerUrl(f.pauseTxDigest)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-orange-400 hover:text-orange-300"
-                        >
-                          pause: {shortAddr(f.pauseTxDigest)}
-                        </a>
-                      </div>
-                    )}
-                    {f.verdict === "BREACH" && f.actionTaken === "PAUSED_ONCHAIN" && (
-                      <div className="mt-1 p-1 bg-red-950/50 rounded border border-red-800 text-red-300">
-                        <div className="font-bold text-red-400">PAUSE RECEIPT</div>
-                        <div>decision: {shortAddr(f.reviewedDecisionBlobId)}</div>
-                        {f.reviewedOutcomeBlobId && (
-                          <div>outcome: {shortAddr(f.reviewedOutcomeBlobId)}</div>
-                        )}
-                        {f.pauseReasonBlobId && (
-                          <div>reason blob: {shortAddr(f.pauseReasonBlobId)}</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Bottom: Audit Timeline */}
-      <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4">
-        <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-3">
-          Audit Timeline
-        </h2>
-        {findings.length === 0 ? (
-          <p className="text-zinc-500 text-sm">No audit records yet.</p>
+            {stoppingAgent ? "Stopping…" : "Stop Agent"}
+          </button>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs font-mono">
-              <thead>
-                <tr className="border-b border-zinc-700 text-zinc-400">
-                  <th className="text-left py-1 pr-4">Tick</th>
-                  <th className="text-left py-1 pr-4">Timestamp</th>
-                  <th className="text-left py-1 pr-4">Verdict</th>
-                  <th className="text-left py-1 pr-4">Risk</th>
-                  <th className="text-left py-1 pr-4">Action</th>
-                  <th className="text-left py-1">Explanation</th>
-                </tr>
-              </thead>
-              <tbody>
-                {findings
-                  .slice()
-                  .reverse()
-                  .map((f) => (
-                    <tr
-                      key={f.findingId}
-                      className="border-b border-zinc-700/50 hover:bg-zinc-700/30"
-                    >
-                      <td className="py-1 pr-4 text-zinc-300">#{f.tick}</td>
-                      <td className="py-1 pr-4 text-zinc-400">
-                        {new Date(f.ts).toLocaleTimeString()}
-                      </td>
-                      <td className={`py-1 pr-4 font-bold ${verdictColor(f.verdict)}`}>
-                        {f.verdict}
-                      </td>
-                      <td className={`py-1 pr-4 ${scoreColor(f.riskScore.score)}`}>
-                        {Math.round(f.riskScore.score)}
-                      </td>
-                      <td className="py-1 pr-4 text-zinc-400">
-                        {f.actionTaken}
-                      </td>
-                      <td className="py-1 text-zinc-400 max-w-xs truncate">
-                        {f.explanation.slice(0, 100)}
-                        {f.explanation.length > 100 && "…"}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
+          <div className="flex items-center gap-2">
+            <span>Agent stopped</span>
+            <button onClick={handleRestart} className="text-orange-400 hover:text-orange-300">
+              [Restart]
+            </button>
           </div>
         )}
       </div>
-
-      {/* Latest outcome detail */}
-      {latestOutcome && (
-        <div className="mt-4 bg-zinc-800 rounded-lg border border-zinc-700 p-4">
-          <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-2">
-            Latest Outcome
-          </h2>
-          <dl className="text-xs font-mono grid grid-cols-3 gap-2">
-            <div>
-              <dt className="text-zinc-400">Status</dt>
-              <dd className="text-zinc-100">{latestOutcome.status}</dd>
-            </div>
-            <div>
-              <dt className="text-zinc-400">Executed</dt>
-              <dd className={latestOutcome.executed ? "text-green-400" : "text-red-400"}>
-                {String(latestOutcome.executed)}
-              </dd>
-            </div>
-            {latestOutcome.txDigest && (
-              <div>
-                <dt className="text-zinc-400">TX Digest</dt>
-                <dd>
-                  <a
-                    href={explorerUrl(latestOutcome.txDigest)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-400 hover:text-blue-300"
-                  >
-                    {shortAddr(latestOutcome.txDigest)}
-                  </a>
-                </dd>
-              </div>
-            )}
-            {latestOutcome.fillPrice && (
-              <div>
-                <dt className="text-zinc-400">Fill Price</dt>
-                <dd className="text-zinc-100">{latestOutcome.fillPrice.toFixed(4)}</dd>
-              </div>
-            )}
-            {latestOutcome.error && (
-              <div className="col-span-3">
-                <dt className="text-zinc-400">Error</dt>
-                <dd className="text-red-400">{latestOutcome.error.slice(0, 200)}</dd>
-              </div>
-            )}
-          </dl>
-        </div>
-      )}
     </div>
   );
 }

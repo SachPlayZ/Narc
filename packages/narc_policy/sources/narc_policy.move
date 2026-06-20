@@ -130,18 +130,27 @@ public fun set_mandate_hash(
     });
 }
 
+/// Moves pause authority by transferring the `GuardianCap` to `recipient`.
+/// Irreversible from the sender's side once executed — the new holder gains
+/// sole `pause()` rights.
 public fun transfer_guardian(cap: GuardianCap, recipient: address) {
     transfer::public_transfer(cap, recipient);
 }
 
+/// Returns `true` if the policy is currently paused (orders gated by
+/// `assert_active` will abort).
 public fun paused(policy: &AgentPolicy): bool {
     policy.paused
 }
 
+/// Returns the on-chain mandate hash. Must match the off-chain mandate hashed
+/// in `shared` (Invariant 2).
 public fun mandate_hash(policy: &AgentPolicy): vector<u8> {
     policy.mandate_hash
 }
 
+/// Returns the Walrus blob id of the most recent pause reason, or `none` if the
+/// policy has never been paused or was resumed.
 public fun last_reason_blob(policy: &AgentPolicy): Option<vector<u8>> {
     policy.last_reason_blob
 }

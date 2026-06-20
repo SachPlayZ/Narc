@@ -25,7 +25,8 @@
     "open-orders": "tsx scripts/open-orders.ts",
     "cancel-open-orders": "tsx scripts/cancel-open-orders.ts",
     "a:tick": "tsx examples/run-a-side-tick.ts",
-    "deepbook:spike": "tsx examples/deepbook-order.ts"
+    "deepbook:spike": "tsx examples/deepbook-order.ts",
+    "a:loop": "tsx scripts/a-side-loop.ts"
   },
   "dependencies": {
     "@mysten/deepbook-v3": "^1.5.1",

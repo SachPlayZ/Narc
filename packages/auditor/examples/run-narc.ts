@@ -67,7 +67,9 @@ async function main() {
   process.on("SIGINT", () => { void shutdown(); });
   process.on("SIGTERM", () => { void shutdown(); });
 
-  await auditor.start(10_000);
+  // 30s interval matches the trader loop cadence and keeps MemWal request rate
+  // well under the 500 weighted-requests/hour account limit.
+  await auditor.start(30_000);
 }
 
 main().catch((err) => {

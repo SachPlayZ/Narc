@@ -43,6 +43,9 @@ export class MemWalJournal implements NarcJournal {
   // Expose for testing
   readonly _initOpts: MemWalConfig;
 
+  // Rate-limit cooldown: skip MemWal entirely until this timestamp
+  private rateLimitedUntil = 0;
+
   constructor(env: BSideEnv) {
     this._initOpts = {
       key: env.MEMWAL_DELEGATE_KEY!,
@@ -134,17 +137,47 @@ export class MemWalJournal implements NarcJournal {
     );
   }
 
-  private async rememberJson(record: unknown, namespace: string): Promise<string> {
-    const mw = await this.ready();
-    const result: RememberResult = await retryMemWal(
-      () => mw.rememberAndWait(JSON.stringify(record), namespace)
+  private isRateLimited(): boolean {
+    return Date.now() < this.rateLimitedUntil;
+  }
+
+  private applyRateLimit(error: unknown): void {
+    const msg = error instanceof Error ? error.message : String(error);
+    const match = msg.match(/"retry_after_seconds"\s*:\s*(\d+)/);
+    const seconds = match ? parseInt(match[1], 10) : 300;
+    this.rateLimitedUntil = Date.now() + seconds * 1000;
+    console.error(
+      `[MemWalJournal] Rate limited for ${seconds}s — using local mirror until ${new Date(this.rateLimitedUntil).toISOString()}`
     );
-    return result.blob_id;
+  }
+
+  private async rememberJson(record: unknown, namespace: string): Promise<string> {
+    if (this.isRateLimited()) {
+      throw new Error("[MemWalJournal] Rate limit cooldown active, skipping MemWal write");
+    }
+    const mw = await this.ready();
+    try {
+      const result: RememberResult = await retryMemWal(
+        () => mw.rememberAndWait(JSON.stringify(record), namespace)
+      );
+      return result.blob_id;
+    } catch (error) {
+      if (is429Error(error)) this.applyRateLimit(error);
+      throw error;
+    }
   }
 
   private async recallNamespace(namespace: string): Promise<RecallResult> {
+    if (this.isRateLimited()) {
+      throw new Error("[MemWalJournal] Rate limit cooldown active, skipping MemWal read");
+    }
     const mw = await this.ready();
-    return retryMemWal(() => mw.recall({ query: "*", limit: 1000, namespace }));
+    try {
+      return await retryMemWal(() => mw.recall({ query: "*", limit: 1000, namespace }));
+    } catch (error) {
+      if (is429Error(error)) this.applyRateLimit(error);
+      throw error;
+    }
   }
 
   private async writeWithMirror(
@@ -219,9 +252,16 @@ async function retryMemWal<T>(fn: () => Promise<T>, maxAttempts = 4, baseDelayMs
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-function isRetriableMemWalError(error: unknown): boolean {
+function is429Error(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /429|rate limit|too many requests|timeout|temporarily unavailable|ECONNRESET|ETIMEDOUT/i.test(message);
+  return /429|rate limit|too many requests/i.test(message);
+}
+
+function isRetriableMemWalError(error: unknown): boolean {
+  // 429 is NOT retriable here — we handle it separately with a long cooldown
+  if (is429Error(error)) return false;
+  const message = error instanceof Error ? error.message : String(error);
+  return /timeout|temporarily unavailable|ECONNRESET|ETIMEDOUT/i.test(message);
 }
 
 function mergeById<T>(records: T[], getId: (record: T) => string): T[] {

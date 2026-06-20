@@ -138,3 +138,32 @@ export const RiskScoreSchema = z.object({
   triggeredRules: z.array(RuleResultSchema)
 });
 export type RiskScore = z.infer<typeof RiskScoreSchema>;
+
+export const FindingVerdictSchema = z.enum(["PASS", "WARN", "BREACH"]);
+export type FindingVerdict = z.infer<typeof FindingVerdictSchema>;
+
+export const FindingActionSchema = z.enum(["NONE", "PAUSED_ONCHAIN", "PAUSE_FAILED"]);
+export type FindingAction = z.infer<typeof FindingActionSchema>;
+
+export const FindingRecordSchema = z.object({
+  findingId: z.string().min(1),
+  ts: z.number().int().positive(),
+  auditorId: z.string().min(1),
+  tick: z.number().int().nonnegative(),
+  reviewedDecisionBlobId: z.string().min(1),
+  reviewedOutcomeBlobId: z.string().nullable(),
+  verdict: FindingVerdictSchema,
+  riskScore: RiskScoreSchema,
+  triggeredRules: z.array(RuleResultSchema),
+  explanation: z.string(),
+  actionTaken: FindingActionSchema,
+  pauseTxDigest: z.string().nullable(),
+  pauseTxExplorer: z.string().nullable(),
+  pauseReasonBlobId: z.string().nullable(),
+  narcPrevBlobId: z.string().nullable(),
+  traderPrevBlobId: z.string().nullable(),
+  selfCheckDisagreement: z.boolean(),
+  auditorVersion: z.string(),
+  model: z.string()
+});
+export type FindingRecord = z.infer<typeof FindingRecordSchema>;

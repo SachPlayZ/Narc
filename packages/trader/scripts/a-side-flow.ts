@@ -1,12 +1,17 @@
+import { writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { explorerTxUrl } from "../src/policy/admin.js";
 import { cancelOpenOrders } from "../src/execution/index.js";
 import { createLocalJournal, runASideTick } from "../src/activity/index.js";
 import { buildRuntimeMandate, readMarketSnapshot } from "../src/agent/index.js";
 import { pausePolicy, readPolicyState, resumePolicy, waitForPolicyPauseState } from "../src/policy/index.js";
-import { loadASideEnv } from "@narc/shared";
+import { createJournal } from "@narc/memory";
+import { loadASideEnv, loadBSideEnv } from "@narc/shared";
 
 const env = loadASideEnv();
-const journal = createLocalJournal(env.LOCAL_ACTIVITY_DIR);
+const benv = loadBSideEnv();
+// Use MemWal when credentials present; falls back to local JSONL automatically.
+const journal = createJournal(benv);
 const tickBase = Number(process.env.TICK ?? "0");
 const mode = process.argv[2] === "pause-demo" ? "pause-demo" : "once";
 const loosenCheck = process.argv.includes("--loosen-check");
@@ -15,9 +20,17 @@ const cleanup = !process.argv.includes("--no-cleanup");
 
 const market = await readMarketSnapshot(env);
 const mandate = buildRuntimeMandate(market, {
-  allowedSide: "ask",
-  maxNotionalQuote: Number(market.midPrice.toFixed(6))
+  allowedSide: "ask"
+  // maxNotionalQuote defaults to max(minOrderSize*3, 2) — keeps orders minimal
 });
+
+// Write mandate to activity dir so Narc can read the same mandate object.
+try {
+  mkdirSync(env.LOCAL_ACTIVITY_DIR, { recursive: true });
+  writeFileSync(join(env.LOCAL_ACTIVITY_DIR, "trader-a-mandate.json"), JSON.stringify(mandate, null, 2), "utf8");
+} catch {
+  // Non-fatal — Narc will fall back to sampleMandate
+}
 
 if (mode === "pause-demo") {
   console.log(JSON.stringify(await runPauseDemo(), null, 2));

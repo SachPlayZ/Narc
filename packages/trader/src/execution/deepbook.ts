@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
   deepbook,
+  testnetCoins,
   type BalanceManager,
   type DeepBookClient as DeepBookExtension,
   type Pool,
@@ -109,7 +110,9 @@ export async function depositIntoBalanceManager(
   const runtime = await createRuntime(env, balanceManagerId);
   const result = await signAndExecuteWithRetry(env, () => {
     const tx = new Transaction();
-    runtime.client.deepbook.balanceManager.depositIntoManager(runtime.balanceManagerKey, coinKey, amount)(tx);
+    // SDK expects display units (e.g. SUI, not MIST); divide amount by coin scalar.
+    const coinScalar = (testnetCoins as Record<string, { scalar: number }>)[coinKey]?.scalar ?? 1;
+    runtime.client.deepbook.balanceManager.depositIntoManager(runtime.balanceManagerKey, coinKey, amount / coinScalar)(tx);
     return tx;
   }, { showEffects: true, showObjectChanges: true, showEvents: true }) as any;
 

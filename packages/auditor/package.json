@@ -1,0 +1,30 @@
+{
+  "name": "@narc/auditor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/src/index.d.ts", "import": "./dist/src/index.js" }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "narc:run": "tsx examples/run-narc.ts"
+  },
+  "dependencies": {
+    "@narc/memory": "workspace:*",
+    "@narc/shared": "workspace:*",
+    "@narc/trader": "workspace:*",
+    "@mysten/sui": "^2.19.0",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  }
+}

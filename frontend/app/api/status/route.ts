@@ -1,10 +1,14 @@
 import { SuiJsonRpcClient, getJsonRpcFullnodeUrl } from "@mysten/sui/jsonRpc";
+import { loadRepoEnvFile } from "@narc/shared";
 
 export const dynamic = "force-dynamic";
 
+const repoEnv = loadRepoEnvFile(process.cwd());
+
 const AGENT_POLICY_OBJECT_ID =
   process.env.AGENT_POLICY_OBJECT_ID ??
-  "0x2f738d6b04d5804516c160e432f6059e7da196419be62a856801dd9b57441920";
+  repoEnv.AGENT_POLICY_OBJECT_ID ??
+  "";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -46,8 +50,11 @@ function toHex(bytes: number[]): string {
 
 export async function GET() {
   try {
+    if (!AGENT_POLICY_OBJECT_ID) {
+      throw new Error("AGENT_POLICY_OBJECT_ID is not configured.");
+    }
     const rpcUrl =
-      process.env.SUI_RPC_URL ?? getJsonRpcFullnodeUrl("testnet");
+      process.env.SUI_RPC_URL ?? repoEnv.SUI_RPC_URL ?? getJsonRpcFullnodeUrl("testnet");
     const client = new SuiJsonRpcClient({ url: rpcUrl, network: "testnet" });
 
     const object = await client.getObject({

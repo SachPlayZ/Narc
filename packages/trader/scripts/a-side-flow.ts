@@ -1,12 +1,11 @@
-import { writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
 import { explorerTxUrl } from "../src/policy/admin.js";
 import { cancelOpenOrders } from "../src/execution/index.js";
 import { createLocalJournal, runASideTick } from "../src/activity/index.js";
 import { buildRuntimeMandate, readMarketSnapshot } from "../src/agent/index.js";
-import { pausePolicy, readPolicyState, resumePolicy, waitForPolicyPauseState } from "../src/policy/index.js";
+import { pausePolicy, readPolicyState, resumePolicy, setPolicyMandateHash, waitForPolicyMandateHash, waitForPolicyPauseState } from "../src/policy/index.js";
 import { createJournal } from "@narc/memory";
-import { loadASideEnv, loadBSideEnv } from "@narc/shared";
+import { loadASideEnv, loadBSideEnv, writeMandateArtifact } from "@narc/shared";
+import { join } from "node:path";
 
 const env = loadASideEnv();
 const benv = loadBSideEnv();
@@ -20,17 +19,11 @@ const cleanup = !process.argv.includes("--no-cleanup");
 
 const market = await readMarketSnapshot(env);
 const mandate = buildRuntimeMandate(market, {
-  allowedSide: "ask"
-  // maxNotionalQuote defaults to max(minOrderSize*3, 2) — keeps orders minimal
+  allowedSide: "ask",
+  maxNotionalQuote: Number(market.midPrice.toFixed(6))
 });
-
-// Write mandate to activity dir so Narc can read the same mandate object.
-try {
-  mkdirSync(env.LOCAL_ACTIVITY_DIR, { recursive: true });
-  writeFileSync(join(env.LOCAL_ACTIVITY_DIR, "trader-a-mandate.json"), JSON.stringify(mandate, null, 2), "utf8");
-} catch {
-  // Non-fatal — Narc will fall back to sampleMandate
-}
+const mandateArtifact = writeMandateArtifact(join(env.LOCAL_ACTIVITY_DIR, "trader-a-mandate.json"), mandate);
+const policyHashUpdate = await syncPolicyMandateHash();
 
 if (mode === "pause-demo") {
   console.log(JSON.stringify(await runPauseDemo(), null, 2));
@@ -55,6 +48,8 @@ async function runOnce() {
     mode,
     market,
     mandate,
+    mandateArtifact,
+    policyHashUpdate,
     policyBefore: before,
     tick,
     policyAfter: after,
@@ -94,6 +89,8 @@ async function runPauseDemo() {
     mode,
     market,
     mandate,
+    mandateArtifact,
+    policyHashUpdate,
     policyBefore: before,
     steps: {
       first,
@@ -106,6 +103,25 @@ async function runPauseDemo() {
       third
     },
     cleanup: cleanupResult
+  };
+}
+
+async function syncPolicyMandateHash() {
+  const before = await readPolicyState(env);
+  const expected = `0x${mandateArtifact.mandateHash}`;
+  if (before.mandateHashHex.toLowerCase() === expected.toLowerCase()) {
+    return {
+      alreadyMatched: true,
+      state: before
+    };
+  }
+
+  const tx = await setPolicyMandateHash(mandateArtifact.mandateHash, env);
+  const state = await waitForPolicyMandateHash(mandateArtifact.mandateHash, env);
+  return {
+    alreadyMatched: false,
+    tx,
+    state
   };
 }
 

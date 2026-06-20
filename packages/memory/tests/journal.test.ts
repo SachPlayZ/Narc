@@ -216,8 +216,8 @@ describe("MemWalJournal", () => {
   // The key assertion: the config passed to MemWal.create does NOT include suiNetwork
   // (MemWalConfig v0.0.7 does not have that field — documented in BLOCKERS.md).
   it("constructor captures correct MemWal config options (key, accountId, serverUrl)", async () => {
-    // Mock @mysten-incubation/memwal to avoid real network calls
-    vi.mock("@mysten-incubation/memwal", () => ({
+    vi.resetModules();
+    vi.doMock("@mysten-incubation/memwal", () => ({
       MemWal: {
         create: vi.fn(() => ({
           rememberAndWait: vi.fn(),
@@ -249,5 +249,85 @@ describe("MemWalJournal", () => {
     expect(journal._initOpts.serverUrl).toBe("http://localhost:8000");
     // suiNetwork must NOT be set (not in MemWalConfig v0.0.7 for delegate-key client)
     expect((journal._initOpts as unknown as Record<string, unknown>).suiNetwork).toBeUndefined();
+  });
+
+  it("falls back to local mirror on MemWal write failure", async () => {
+    vi.resetModules();
+    vi.doMock("@mysten-incubation/memwal", () => ({
+      MemWal: {
+        create: vi.fn(() => ({
+          rememberAndWait: vi.fn(async () => {
+            throw new Error("429 rate limit");
+          }),
+          recall: vi.fn(async () => ({ results: [] })),
+          health: vi.fn()
+        }))
+      }
+    }));
+
+    const { MemWalJournal } = await import("../src/memwalJournal.js");
+    const dir = await mkdtemp(join(tmpdir(), "narc-memory-memwal-write-"));
+    try {
+      const journal = new MemWalJournal({
+        SUI_NETWORK: "testnet",
+        NARC_PRIVATE_KEY: "dummy-key",
+        NARC_AGENT_ID: "trader-a",
+        NARC_AUDITOR_ID: "narc",
+        MEMWAL_ACCOUNT_ID: "acc-123",
+        MEMWAL_DELEGATE_KEY: "del-key-456",
+        MEMWAL_RELAYER_URL: "http://localhost:8000",
+        GROQ_MODEL: "qwen/qwen3-32b",
+        LOCAL_ACTIVITY_DIR: dir
+      });
+
+      const blobId = await journal.writeDecision(makeDecisionRecord());
+      expect(blobId).toMatch(/^local:/);
+
+      const local = new LocalFallbackJournal(dir);
+      await expect(local.readAllDecisions("trader-a")).resolves.toHaveLength(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("merges MemWal reads with the local mirror", async () => {
+    vi.resetModules();
+    vi.doMock("@mysten-incubation/memwal", () => ({
+      MemWal: {
+        create: vi.fn(() => ({
+          rememberAndWait: vi.fn(),
+          recall: vi.fn(async () => ({
+            results: [
+              { text: JSON.stringify(makeDecisionRecord({ recordId: "remote-1" })) }
+            ]
+          })),
+          health: vi.fn()
+        }))
+      }
+    }));
+
+    const { MemWalJournal } = await import("../src/memwalJournal.js");
+    const dir = await mkdtemp(join(tmpdir(), "narc-memory-memwal-read-"));
+    try {
+      const local = new LocalFallbackJournal(dir);
+      await local.writeDecision(makeDecisionRecord({ recordId: "local-1" }));
+
+      const journal = new MemWalJournal({
+        SUI_NETWORK: "testnet",
+        NARC_PRIVATE_KEY: "dummy-key",
+        NARC_AGENT_ID: "trader-a",
+        NARC_AUDITOR_ID: "narc",
+        MEMWAL_ACCOUNT_ID: "acc-123",
+        MEMWAL_DELEGATE_KEY: "del-key-456",
+        MEMWAL_RELAYER_URL: "http://localhost:8000",
+        GROQ_MODEL: "qwen/qwen3-32b",
+        LOCAL_ACTIVITY_DIR: dir
+      });
+
+      const all = await journal.readAllDecisions("trader-a");
+      expect(all.map((record) => record.recordId)).toEqual(["remote-1", "local-1"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

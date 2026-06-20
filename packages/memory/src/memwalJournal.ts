@@ -5,18 +5,19 @@ import type {
   RecallMemory
 } from "@mysten-incubation/memwal";
 import {
-  BSideEnv,
-  DecisionRecord,
-  DecisionRecordSchema,
-  OutcomeRecord,
-  OutcomeRecordSchema,
   FindingRecord,
   FindingRecordSchema,
   decisionNamespace,
   outcomeNamespace,
-  findingNamespace
+  findingNamespace,
+  BSideEnv,
+  DecisionRecord,
+  DecisionRecordSchema,
+  OutcomeRecord,
+  OutcomeRecordSchema
 } from "@narc/shared";
 import type { NarcJournal } from "./journal.js";
+import { LocalFallbackJournal } from "./localJournal.js";
 
 // MemWal instance type
 import type { MemWal as MemWalType } from "@mysten-incubation/memwal";
@@ -38,6 +39,7 @@ import type { MemWal as MemWalType } from "@mysten-incubation/memwal";
 export class MemWalJournal implements NarcJournal {
   private memwal!: MemWalType;
   private _ready: Promise<void>;
+  private readonly localMirror: LocalFallbackJournal;
   // Expose for testing
   readonly _initOpts: MemWalConfig;
 
@@ -49,6 +51,7 @@ export class MemWalJournal implements NarcJournal {
       // NOTE: MemWalConfig (v0.0.7) has no suiNetwork field. The relayer-mode
       // client is network-agnostic at the SDK level. See BLOCKERS.md.
     };
+    this.localMirror = new LocalFallbackJournal(env.LOCAL_ACTIVITY_DIR);
     this._ready = this._init();
   }
 
@@ -67,30 +70,24 @@ export class MemWalJournal implements NarcJournal {
   // ---------------------------------------------------------------------------
 
   async writeDecision(record: DecisionRecord): Promise<string> {
-    const mw = await this.ready();
-    const result: RememberResult = await mw.rememberAndWait(
-      JSON.stringify(record),
-      decisionNamespace(record.agentId)
+    return this.writeWithMirror(
+      () => this.rememberJson(record, decisionNamespace(record.agentId)),
+      () => this.localMirror.writeDecision(record)
     );
-    return result.blob_id;
   }
 
   async writeOutcome(record: OutcomeRecord): Promise<string> {
-    const mw = await this.ready();
-    const result: RememberResult = await mw.rememberAndWait(
-      JSON.stringify(record),
-      outcomeNamespace(record.agentId)
+    return this.writeWithMirror(
+      () => this.rememberJson(record, outcomeNamespace(record.agentId)),
+      () => this.localMirror.writeOutcome(record)
     );
-    return result.blob_id;
   }
 
   async writeFinding(record: FindingRecord): Promise<string> {
-    const mw = await this.ready();
-    const result: RememberResult = await mw.rememberAndWait(
-      JSON.stringify(record),
-      findingNamespace(record.auditorId)
+    return this.writeWithMirror(
+      () => this.rememberJson(record, findingNamespace(record.auditorId)),
+      () => this.localMirror.writeFinding(record)
     );
-    return result.blob_id;
   }
 
   // ---------------------------------------------------------------------------
@@ -102,24 +99,95 @@ export class MemWalJournal implements NarcJournal {
   // See BLOCKERS.md for the full blocker description.
 
   async readAllDecisions(agentId: string): Promise<DecisionRecord[]> {
-    const mw = await this.ready();
     const ns = decisionNamespace(agentId);
-    const result: RecallResult = await mw.recall({ query: "*", limit: 1000, namespace: ns });
-    return parseRecallMemories(result.results, DecisionRecordSchema);
+    return mergeById(
+      await this.readLocalAndMemWal(
+        () => this.recallNamespace(ns),
+        () => this.localMirror.readAllDecisions(agentId),
+        DecisionRecordSchema
+      ),
+      (record) => record.recordId
+    );
   }
 
   async readAllOutcomes(agentId: string): Promise<OutcomeRecord[]> {
-    const mw = await this.ready();
     const ns = outcomeNamespace(agentId);
-    const result: RecallResult = await mw.recall({ query: "*", limit: 1000, namespace: ns });
-    return parseRecallMemories(result.results, OutcomeRecordSchema);
+    return mergeById(
+      await this.readLocalAndMemWal(
+        () => this.recallNamespace(ns),
+        () => this.localMirror.readAllOutcomes(agentId),
+        OutcomeRecordSchema
+      ),
+      (record) => record.recordId
+    );
   }
 
   async readAllFindings(auditorId: string): Promise<FindingRecord[]> {
-    const mw = await this.ready();
     const ns = findingNamespace(auditorId);
-    const result: RecallResult = await mw.recall({ query: "*", limit: 1000, namespace: ns });
-    return parseRecallMemories(result.results, FindingRecordSchema);
+    return mergeById(
+      await this.readLocalAndMemWal(
+        () => this.recallNamespace(ns),
+        () => this.localMirror.readAllFindings(auditorId),
+        FindingRecordSchema
+      ),
+      (record) => record.findingId
+    );
+  }
+
+  private async rememberJson(record: unknown, namespace: string): Promise<string> {
+    const mw = await this.ready();
+    const result: RememberResult = await retryMemWal(
+      () => mw.rememberAndWait(JSON.stringify(record), namespace)
+    );
+    return result.blob_id;
+  }
+
+  private async recallNamespace(namespace: string): Promise<RecallResult> {
+    const mw = await this.ready();
+    return retryMemWal(() => mw.recall({ query: "*", limit: 1000, namespace }));
+  }
+
+  private async writeWithMirror(
+    writeMemWal: () => Promise<string>,
+    writeLocal: () => Promise<string>
+  ): Promise<string> {
+    try {
+      const blobId = await writeMemWal();
+      await writeLocal();
+      return blobId;
+    } catch (error) {
+      console.error(
+        "[MemWalJournal] Falling back to local mirror write:",
+        error instanceof Error ? error.message : String(error)
+      );
+      return writeLocal();
+    }
+  }
+
+  private async readLocalAndMemWal<T>(
+    readMemWal: () => Promise<RecallResult>,
+    readLocal: () => Promise<T[]>,
+    schema: { parse(data: unknown): T }
+  ): Promise<T[]> {
+    const [localResult, memwalResult] = await Promise.allSettled([
+      readLocal(),
+      readMemWal()
+    ]);
+
+    const local = localResult.status === "fulfilled" ? localResult.value : [];
+    if (memwalResult.status !== "fulfilled") {
+      if (localResult.status !== "fulfilled") {
+        throw memwalResult.reason;
+      }
+      console.error(
+        "[MemWalJournal] MemWal read failed; serving local mirror:",
+        memwalResult.reason instanceof Error ? memwalResult.reason.message : String(memwalResult.reason)
+      );
+      return local;
+    }
+
+    const remote = parseRecallMemories(memwalResult.value.results, schema);
+    return [...remote, ...local];
   }
 }
 
@@ -133,4 +201,41 @@ function parseRecallMemories<T>(
 ): T[] {
   if (!memories?.length) return [];
   return memories.map((m) => schema.parse(JSON.parse(m.text)));
+}
+
+async function retryMemWal<T>(fn: () => Promise<T>, maxAttempts = 4, baseDelayMs = 500): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt >= maxAttempts || !isRetriableMemWalError(error)) {
+        throw error;
+      }
+      await sleep(baseDelayMs * attempt);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+function isRetriableMemWalError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /429|rate limit|too many requests|timeout|temporarily unavailable|ECONNRESET|ETIMEDOUT/i.test(message);
+}
+
+function mergeById<T>(records: T[], getId: (record: T) => string): T[] {
+  const seen = new Map<string, T>();
+  for (const record of records) {
+    seen.set(getId(record), record);
+  }
+  return [...seen.values()].sort((a, b) => {
+    const ats = typeof (a as { ts?: unknown }).ts === "number" ? (a as { ts: number }).ts : 0;
+    const bts = typeof (b as { ts?: unknown }).ts === "number" ? (b as { ts: number }).ts : 0;
+    return ats - bts;
+  });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

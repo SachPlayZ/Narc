@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type {
   DecisionRecord,
   FindingRecord,
+  MandateArtifact,
   OutcomeRecord,
 } from "@narc/shared";
 import Link from "next/link";
@@ -51,6 +52,7 @@ export default function DashboardPage() {
   const [outcomes, setOutcomes] = useState<OutcomeRecord[]>([]);
   const [findings, setFindings] = useState<FindingRecord[]>([]);
   const [policyStatus, setPolicyStatus] = useState<PolicyStatus | null>(null);
+  const [mandateArtifact, setMandateArtifact] = useState<MandateArtifact | null>(null);
   const [resuming, setResuming] = useState(false);
   const [resumeResult, setResumeResult] = useState<{
     digest?: string;
@@ -60,11 +62,12 @@ export default function DashboardPage() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   const fetchAll = useCallback(async () => {
-    const [dRes, oRes, fRes, sRes] = await Promise.allSettled([
+    const [dRes, oRes, fRes, sRes, mRes] = await Promise.allSettled([
       fetch("/api/decisions").then((r) => r.json()),
       fetch("/api/outcomes").then((r) => r.json()),
       fetch("/api/findings").then((r) => r.json()),
       fetch("/api/status").then((r) => r.json()),
+      fetch("/api/mandate").then((r) => r.json()),
     ]);
 
     if (dRes.status === "fulfilled" && Array.isArray(dRes.value?.records)) {
@@ -78,6 +81,11 @@ export default function DashboardPage() {
     }
     if (sRes.status === "fulfilled") {
       setPolicyStatus(sRes.value as PolicyStatus);
+    }
+    if (mRes.status === "fulfilled" && mRes.value?.artifact) {
+      setMandateArtifact(mRes.value.artifact as MandateArtifact);
+    } else if (mRes.status === "fulfilled") {
+      setMandateArtifact(null);
     }
     setLastRefresh(new Date());
   }, []);
@@ -117,16 +125,11 @@ export default function DashboardPage() {
   const riskScore = latestFinding?.riskScore.score ?? 0;
   const verdict = latestFinding?.riskScore.verdict ?? "PASS";
 
-  // Get mandate from latest decision
-  const mandate = latestDecision
-    ? {
-        allowedPairs: latestDecision.observation.pair,
-        maxNotionalQuote: latestDecision.intent.sizeQuote,
-        expiresAt: latestDecision.observation.priceFeedTs,
-      }
-    : null;
-
   const isPaused = policyStatus?.paused ?? false;
+  const mandate = mandateArtifact?.mandate ?? null;
+  const mandateHashMatches = mandateArtifact && policyStatus
+    ? `0x${mandateArtifact.mandateHash}`.toLowerCase() === policyStatus.mandateHash.toLowerCase()
+    : null;
 
   return (
     <div className="min-h-screen bg-zinc-900 text-zinc-100 p-4 font-sans">
@@ -287,7 +290,7 @@ export default function DashboardPage() {
               <dl className="text-xs space-y-1 font-mono">
                 <div className="flex justify-between">
                   <span className="text-zinc-400">Pair:</span>
-                  <span className="text-zinc-100">{mandate.allowedPairs}</span>
+                  <span className="text-zinc-100">{mandate.allowedPairs.join(", ")}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-zinc-400">Max notional:</span>
@@ -296,7 +299,19 @@ export default function DashboardPage() {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">Price feed ts:</span>
+                  <span className="text-zinc-400">Min order:</span>
+                  <span className="text-zinc-100">
+                    {mandate.minOrderSizeQuote.toFixed(4)} quote
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Tick / lot:</span>
+                  <span className="text-zinc-100">
+                    {mandate.tickSize} / {mandate.lotSizeQuote}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Expires:</span>
                   <span className="text-zinc-100">
                     {new Date(mandate.expiresAt).toLocaleTimeString()}
                   </span>
@@ -312,6 +327,17 @@ export default function DashboardPage() {
                 <div className="text-zinc-300 break-all">
                   {shortAddr(policyStatus.mandateHash)}
                 </div>
+                {mandateArtifact && (
+                  <div className="mt-2">
+                    <div className="text-zinc-400 mb-1">Mandate hash (artifact):</div>
+                    <div className="text-zinc-300 break-all">
+                      {shortAddr(`0x${mandateArtifact.mandateHash}`)}
+                    </div>
+                    <div className={`mt-1 ${mandateHashMatches ? "text-green-400" : "text-yellow-300"}`}>
+                      {mandateHashMatches ? "hashes match" : "hash mismatch"}
+                    </div>
+                  </div>
+                )}
                 {policyStatus.lastReasonBlob && (
                   <div className="mt-2">
                     <span className="text-zinc-400">Last pause reason: </span>
@@ -321,6 +347,53 @@ export default function DashboardPage() {
                   </div>
                 )}
               </div>
+            )}
+          </div>
+
+          {/* Execution diagnostics */}
+          <div className="bg-zinc-800 rounded-lg border border-zinc-700 p-4">
+            <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-3">
+              Execution Diagnostics
+            </h2>
+            {latestDecision ? (
+              <div className="space-y-3 text-xs font-mono">
+                <div>
+                  <div className="text-zinc-400 mb-1">Pool checks</div>
+                  <div className="space-y-1">
+                    {latestDecision.poolChecks.map((check) => (
+                      <div key={check.name} className="flex justify-between gap-2">
+                        <span className="text-zinc-400">{check.name}</span>
+                        <span className={check.passed ? "text-green-400" : "text-red-400"}>
+                          {check.passed ? "PASS" : "FAIL"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="border-t border-zinc-700 pt-3">
+                  <div className="text-zinc-400 mb-1">Fee estimate</div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Source</span>
+                    <span className="text-zinc-100">{latestDecision.feeEstimate.source}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Bps</span>
+                    <span className="text-zinc-100">{latestDecision.feeEstimate.estimatedFeeBps}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Amount</span>
+                    <span className="text-zinc-100">
+                      {latestDecision.feeEstimate.feeAmountQuote ?? "n/a"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Token</span>
+                    <span className="text-zinc-100">{latestDecision.feeEstimate.feeToken ?? "n/a"}</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-zinc-500 text-sm">No decision diagnostics yet.</p>
             )}
           </div>
 

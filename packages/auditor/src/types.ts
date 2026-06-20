@@ -3,6 +3,7 @@ import type {
   FindingAction,
   FindingRecord,
   Mandate,
+  MandateArtifact,
   OutcomeRecord
 } from "@narc/shared";
 
@@ -47,6 +48,8 @@ export type AuditTickInput = {
   /** blob_id of the trader's most recent DecisionRecord (for cross-link) */
   traderPrevBlobId: string | null;
 };
+
+export type MandateSource = Mandate | MandateArtifact;
 
 export type AuditTickResult = {
   finding: FindingRecord;

@@ -18,7 +18,7 @@ const market: MarketSnapshot = {
   }
 };
 
-describe("runASideTick", () => {
+describe("runASideTick", { timeout: 60000 }, () => {
   it("prevents trading when decision persistence fails", async () => {
     const placeOrder = vi.fn();
 

@@ -10,14 +10,14 @@
  * Uses @narc/memory (createJournal) for all MemWal/local I/O.
  */
 
-import type { BSideEnv, FindingRecord, Mandate, OutcomeRecord } from "@narc/shared";
+import { createMandateArtifact, type BSideEnv, type FindingRecord, type Mandate, type MandateArtifact, type OutcomeRecord } from "@narc/shared";
 import { executeBreach } from "./pause.js";
 import { auditTick } from "./tick.js";
-import type { AuditTickResult, NarcJournal } from "./types.js";
+import type { AuditTickResult, MandateSource, NarcJournal } from "./types.js";
 
 export class NarcAuditor {
   private readonly env: BSideEnv;
-  private readonly getMandate: () => Mandate;
+  private readonly getMandate: () => MandateSource;
   private readonly journal: NarcJournal;
 
   private tick = 0;
@@ -25,7 +25,7 @@ export class NarcAuditor {
   private running = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(env: BSideEnv, mandate: Mandate | (() => Mandate), journal?: NarcJournal) {
+  constructor(env: BSideEnv, mandate: MandateSource | (() => MandateSource), journal?: NarcJournal) {
     this.env = env;
     this.getMandate = typeof mandate === "function" ? mandate : () => mandate;
 
@@ -110,14 +110,33 @@ export class NarcAuditor {
       return null;
     }
 
+    const mandateArtifact = normalizeMandateSource(this.getMandate());
+    const matchingDecisions = decisions.filter(
+      (decision) => decision.mandateHash === mandateArtifact.mandateHash
+    );
+
+    if (matchingDecisions.length === 0) {
+      const latestDecisionTs = decisions.reduce((best, cur) => Math.max(best, cur.ts), 0);
+      if (latestDecisionTs < mandateArtifact.writtenAt) {
+        console.error(
+          `[Narc] Waiting for decisions that match current mandate hash ${mandateArtifact.mandateHash.slice(0, 12)}...`
+        );
+        return null;
+      }
+    }
+
+    const scopedDecisions = matchingDecisions.length > 0 ? matchingDecisions : decisions;
+    const scopedDecisionIds = new Set(scopedDecisions.map((decision) => decision.recordId));
+    const scopedOutcomes = outcomes.filter((outcome) => scopedDecisionIds.has(outcome.decisionRecordId));
+
     // Compute traderPrevBlobId: blob_id of the most recent decision by timestamp
-    const latestDecision = decisions.reduce((best, cur) =>
+    const latestDecision = scopedDecisions.reduce((best, cur) =>
       cur.ts > best.ts ? cur : best
     );
     const traderPrevBlobId = latestDecision.prevBlobId;
 
     // Compute richer cumulative notional by joining decisions ↔ outcomes
-    const cumulativeNotionalQuote = computeRichCumulative(decisions, outcomes);
+    const cumulativeNotionalQuote = computeRichCumulative(scopedDecisions, scopedOutcomes);
 
     const currentTick = this.tick++;
 
@@ -126,9 +145,9 @@ export class NarcAuditor {
         auditorId,
         agentId,
         tick: currentTick,
-        mandate: this.getMandate(),
-        decisions,
-        outcomes: enhanceOutcomesWithSizeQuote(decisions, outcomes),
+        mandate: mandateArtifact.mandate,
+        decisions: scopedDecisions,
+        outcomes: enhanceOutcomesWithSizeQuote(scopedDecisions, scopedOutcomes),
         narcPrevBlobId: this.narcPrevBlobId,
         traderPrevBlobId
       },
@@ -172,6 +191,13 @@ export class NarcAuditor {
     const mem = await import("@narc/memory" as any);
     (this as unknown as { journal: NarcJournal }).journal = mem.createJournal(this.env);
   }
+}
+
+function normalizeMandateSource(source: MandateSource): MandateArtifact {
+  if ("mandate" in source && "mandateHash" in source && "writtenAt" in source) {
+    return source;
+  }
+  return createMandateArtifact(source as Mandate);
 }
 
 // ---------------------------------------------------------------------------

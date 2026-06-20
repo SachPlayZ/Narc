@@ -12,6 +12,7 @@ import {
 import type { ClientWithExtensions } from "@mysten/sui/client";
 import { Transaction } from "@mysten/sui/transactions";
 import { loadASideEnv, type ASideEnv, type Mandate, type TradeIntent } from "@narc/shared";
+import { retryTransient } from "../network.js";
 import { getSuiClient, keypairFromSuiPrivateKey, signAndExecuteWithRetry } from "../sui.js";
 import { assertPoolChecksPass, checkPoolParameters } from "./poolChecks.js";
 
@@ -94,10 +95,14 @@ export async function getOpenOrders(
   env: ASideEnv = loadASideEnv()
 ): Promise<string[]> {
   const runtime = await createRuntime(env, balanceManagerId);
-  return withTimeout(
-    runtime.client.deepbook.accountOpenOrders(runtime.pool.runtimePoolKey, runtime.balanceManagerKey),
-    10_000,
-    "Timed out fetching DeepBook open orders."
+  return retryTransient(
+    () =>
+      withTimeout(
+        runtime.client.deepbook.accountOpenOrders(runtime.pool.runtimePoolKey, runtime.balanceManagerKey),
+        10_000,
+        "Timed out fetching DeepBook open orders."
+      ),
+    { label: "getOpenOrders", maxAttempts: 4, baseDelayMs: 750 }
   );
 }
 
@@ -171,7 +176,10 @@ export async function cancelLiveOrdersForManager(
 
 export async function readTradeParams(env: ASideEnv = loadASideEnv()): Promise<PoolTradeParams> {
   const runtime = await createRuntime(env);
-  return runtime.client.deepbook.poolTradeParams(runtime.pool.runtimePoolKey);
+  return retryTransient(
+    () => runtime.client.deepbook.poolTradeParams(runtime.pool.runtimePoolKey),
+    { label: "readTradeParams", maxAttempts: 4, baseDelayMs: 750 }
+  );
 }
 
 export function feeEstimateFromTradeParams(
@@ -364,9 +372,13 @@ function balanceManagerArtifactPath(env: ASideEnv): string {
 
 async function balanceManagerExists(balanceManagerId: string, env: ASideEnv): Promise<boolean> {
   try {
-    const object = await getSuiClient(env).getObject({
-      id: balanceManagerId
-    });
+    const object = await retryTransient(
+      () =>
+        getSuiClient(env).getObject({
+          id: balanceManagerId
+        }),
+      { label: "balanceManagerExists", maxAttempts: 3, baseDelayMs: 500 }
+    );
     return object.data?.objectId === balanceManagerId;
   } catch {
     return false;

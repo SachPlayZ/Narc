@@ -138,6 +138,7 @@ export async function auditTick(
     verdict,
     selfCheckDisagreement,
     mandateHashMismatch,
+    expectedHash,
     risk,
     latestDecision,
     matchedOutcome,
@@ -217,8 +218,12 @@ function findLatestDecision(
   if (decisions.length === 0) return null;
   // Sort by timestamp so fresh decisions (from the latest agent run) are
   // preferred over older records with higher tick numbers from past sessions.
+  // When timestamps tie, prefer the higher tick to avoid missing the newest
+  // decision in tight local test/demo loops.
   return decisions.reduce((best, current) =>
-    current.ts > best.ts ? current : best
+    current.ts > best.ts || (current.ts === best.ts && current.tick > best.tick)
+      ? current
+      : best
   );
 }
 
@@ -255,6 +260,7 @@ type ExplanationArgs = {
   verdict: FindingRecord["verdict"];
   selfCheckDisagreement: boolean;
   mandateHashMismatch: boolean;
+  expectedHash: string;
   risk: ReturnType<typeof riskScore>;
   latestDecision: DecisionRecord | null;
   matchedOutcome: OutcomeRecord | null;
@@ -265,6 +271,7 @@ function buildExplanation({
   verdict,
   selfCheckDisagreement,
   mandateHashMismatch,
+  expectedHash,
   risk,
   latestDecision,
   matchedOutcome,
@@ -283,7 +290,7 @@ function buildExplanation({
   if (mandateHashMismatch) {
     parts.push(
       `MANDATE HASH MISMATCH: decision carried ${latestDecision.mandateHash}; ` +
-        `expected ${hashMandate(recomputedEval as unknown as Parameters<typeof hashMandate>[0])}. ` +
+        `expected ${expectedHash}. ` +
         `Possible tampering or version drift.`
     );
   }

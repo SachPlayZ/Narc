@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { loadRepoEnvFile, TradeIntentSchema, type Mandate, type TradeIntent } from "@narc/shared";
+import { retryTransient } from "../network.js";
 
 const DEFAULT_GROQ_MODEL = "qwen/qwen3-32b";
 const DEFAULT_GROQ_BASE_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -180,18 +181,20 @@ function extractJsonObject(content: string): string {
 }
 
 async function defaultChatRequester(request: ChatRequest): Promise<string> {
-  const response = await fetch(request.url, {
-    method: "POST",
-    headers: request.headers,
-    body: request.body
-  });
+  return retryTransient(async () => {
+    const response = await fetch(request.url, {
+      method: "POST",
+      headers: request.headers,
+      body: request.body
+    });
 
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`Groq chat completion failed (${response.status}): ${text}`);
-  }
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Groq chat completion failed (${response.status}): ${text}`);
+    }
 
-  return text;
+    return text;
+  }, { label: "groqChatCompletion", maxAttempts: 3, baseDelayMs: 1000 });
 }
 
 const ChatCompletionResponseSchema = z.object({

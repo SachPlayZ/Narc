@@ -2,20 +2,26 @@ import { Transaction } from "@mysten/sui/transactions";
 import { SuiJsonRpcClient, getJsonRpcFullnodeUrl } from "@mysten/sui/jsonRpc";
 import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { loadRepoEnvFile } from "@narc/shared";
 
 export const dynamic = "force-dynamic";
 
+const repoEnv = loadRepoEnvFile(process.cwd());
+
 const NARC_POLICY_PACKAGE_ID =
   process.env.NARC_POLICY_PACKAGE_ID ??
-  "0xb99544e895e5cd66fe06c09ca5ebd5d8fe731b04829c1db88def6c63e416bcd8";
+  repoEnv.NARC_POLICY_PACKAGE_ID ??
+  "";
 
 const AGENT_POLICY_OBJECT_ID =
   process.env.AGENT_POLICY_OBJECT_ID ??
-  "0x2f738d6b04d5804516c160e432f6059e7da196419be62a856801dd9b57441920";
+  repoEnv.AGENT_POLICY_OBJECT_ID ??
+  "";
 
 const OWNER_CAP_ID =
   process.env.OWNER_CAP_ID ??
-  "0x2863606f73ffd915295280283f116258d9da51091bfb21e28f1d26713d76afe8";
+  repoEnv.OWNER_CAP_ID ??
+  "";
 
 function parseByteArgument(value: string): number[] {
   if (/^0x[0-9a-fA-F]*$/.test(value)) {
@@ -26,7 +32,7 @@ function parseByteArgument(value: string): number[] {
 }
 
 export async function POST(request: Request) {
-  const traderKey = process.env.TRADER_PRIVATE_KEY;
+  const traderKey = process.env.TRADER_PRIVATE_KEY ?? repoEnv.TRADER_PRIVATE_KEY;
   if (!traderKey) {
     return Response.json(
       { error: "TRADER_PRIVATE_KEY not configured — cannot sign resume tx" },
@@ -35,6 +41,9 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (!NARC_POLICY_PACKAGE_ID || !AGENT_POLICY_OBJECT_ID || !OWNER_CAP_ID) {
+      throw new Error("Policy package id, policy object id, or owner cap id is not configured.");
+    }
     const body = await request.json().catch(() => ({}));
     const reason =
       typeof body?.reason === "string" && body.reason.trim().length > 0
@@ -42,7 +51,7 @@ export async function POST(request: Request) {
         : "dashboard-override-resume";
 
     const rpcUrl =
-      process.env.SUI_RPC_URL ?? getJsonRpcFullnodeUrl("testnet");
+      process.env.SUI_RPC_URL ?? repoEnv.SUI_RPC_URL ?? getJsonRpcFullnodeUrl("testnet");
     const client = new SuiJsonRpcClient({ url: rpcUrl, network: "testnet" }) as any;
 
     const decoded = decodeSuiPrivateKey(traderKey);

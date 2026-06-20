@@ -14,9 +14,8 @@
  * Without MemWal credentials, falls back to local JSONL files.
  */
 
-import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadBSideEnv, MandateSchema, sampleMandate } from "@narc/shared";
+import { createMandateArtifact, loadBSideEnv, readMandateArtifact, sampleMandate } from "@narc/shared";
 import { NarcAuditor } from "../src/auditor.js";
 
 async function main() {
@@ -36,22 +35,18 @@ async function main() {
   // Reload mandate from file on each tick so the Narc always uses the mandate
   // that the trader wrote for the current session (prices change between runs).
   const mandatePath = join(env.LOCAL_ACTIVITY_DIR, "trader-a-mandate.json");
-  let cachedMandate = sampleMandate;
+  let cachedArtifact = createMandateArtifact(sampleMandate, 1);
 
   function loadMandate() {
-    if (!existsSync(mandatePath)) return cachedMandate;
-    try {
-      const parsed = MandateSchema.parse(JSON.parse(readFileSync(mandatePath, "utf8")));
-      cachedMandate = parsed;
-      return parsed;
-    } catch {
-      return cachedMandate;
-    }
+    const parsed = readMandateArtifact(mandatePath);
+    if (!parsed) return cachedArtifact;
+    cachedArtifact = parsed;
+    return parsed;
   }
 
   // Log initial mandate state
   const initialMandate = loadMandate();
-  if (initialMandate === sampleMandate) {
+  if (initialMandate.mandate.mandateId === "demo-mandate") {
     console.error(`[Narc] No mandate file at ${mandatePath} — using sampleMandate (run a:flow first)`);
   } else {
     console.error(`[Narc] Loaded live mandate from ${mandatePath} (reloads each tick)`);

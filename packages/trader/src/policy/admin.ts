@@ -114,7 +114,7 @@ export function policyPackagePath(): string {
 }
 
 export function explorerTxUrl(digest: string): string {
-  return `https://suiexplorer.com/txblock/${digest}?network=testnet`;
+  return `https://suiscan.xyz/testnet/tx/${digest}`;
 }
 
 export function parseByteArgument(value: string): number[] {

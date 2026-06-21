@@ -75,7 +75,7 @@ export async function POST(request: Request) {
     });
 
     const digest: string = result.digest;
-    const explorer = `https://suiexplorer.com/txblock/${digest}?network=testnet`;
+    const explorer = `https://suiscan.xyz/testnet/tx/${digest}`;
 
     return Response.json({ digest, explorer });
   } catch (err) {

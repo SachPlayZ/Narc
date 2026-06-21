@@ -186,11 +186,18 @@ export class MemWalJournal implements NarcJournal {
   ): Promise<string> {
     try {
       const blobId = await writeMemWal();
-      await writeLocal();
+      // Fire-and-forget mirror write (JSONL + Supabase sync). Don't let local
+      // failures surface as MemWal failures — the record is already persisted.
+      writeLocal().catch((err) =>
+        console.error(
+          "[MemWalJournal] local mirror write failed (record already in MemWal):",
+          err instanceof Error ? err.message : String(err)
+        )
+      );
       return blobId;
     } catch (error) {
       console.error(
-        "[MemWalJournal] Falling back to local mirror write:",
+        "[MemWalJournal] MemWal write failed, falling back to local mirror:",
         error instanceof Error ? error.message : String(error)
       );
       return writeLocal();

@@ -1,26 +1,9 @@
-import { readMandateArtifact, writeMandateArtifact, MandateSchema } from "@narc/shared";
-import { existsSync, mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
+import { createMandateArtifact, MandateArtifactSchema, MandateSchema } from "@narc/shared";
+import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-function activityDir(): string {
-  const configured = process.env.LOCAL_ACTIVITY_DIR;
-  const cwd = /*turbopackIgnore: true*/ process.cwd();
-  if (configured) {
-    return resolve(cwd, "..", configured);
-  }
-  return resolve(cwd, "../.narc/activity");
-}
-
-function repoRoot(): string {
-  const cwd = /*turbopackIgnore: true*/ process.cwd();
-  return resolve(cwd, "..");
-}
+const AGENT_ID = process.env.NARC_AGENT_ID ?? "trader-a";
 
 export async function POST(request: Request) {
   try {
@@ -64,22 +47,31 @@ export async function POST(request: Request) {
       ],
     });
 
-    const dir = activityDir();
-    mkdirSync(dir, { recursive: true });
-    const path = join(dir, "trader-a-mandate.json");
-    const artifact = writeMandateArtifact(path, mandate);
+    const artifact = createMandateArtifact(mandate);
 
+    if (supabase) {
+      const { error } = await supabase.from("narc_mandates").upsert({
+        agent_id: AGENT_ID,
+        ts: artifact.writtenAt,
+        data: artifact,
+      });
+      if (error) {
+        console.error("[mandate POST] supabase upsert failed:", error);
+      }
+    }
+
+    // On-chain mandate hash update — only available when running locally with pnpm/tsx
     let onChainTx: { digest: string; explorer: string } | null = null;
-    if (process.env.NARC_POLICY_PACKAGE_ID && process.env.OWNER_CAP_ID) {
+    if (process.env.NARC_POLICY_PACKAGE_ID && process.env.OWNER_CAP_ID && !process.env.VERCEL) {
       try {
-        const root = repoRoot();
+        const { execFile } = await import("node:child_process");
+        const { promisify } = await import("node:util");
+        const { resolve } = await import("node:path");
+        const execFileAsync = promisify(execFile);
+        const root = resolve(process.cwd(), "..");
         const { stdout } = await execFileAsync(
           "pnpm",
-          [
-            "--filter", "@narc/trader",
-            "exec", "tsx", "scripts/set-mandate-hash.ts",
-            `0x${artifact.mandateHash}`,
-          ],
+          ["--filter", "@narc/trader", "exec", "tsx", "scripts/set-mandate-hash.ts", `0x${artifact.mandateHash}`],
           { cwd: root, env: process.env, timeout: 30_000 }
         );
         onChainTx = JSON.parse(stdout.trim());
@@ -96,11 +88,20 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  const path = join(activityDir(), "trader-a-mandate.json");
-  if (!existsSync(path)) {
-    return Response.json({ artifact: null, exists: false });
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("narc_mandates")
+      .select("data")
+      .eq("agent_id", AGENT_ID)
+      .single();
+    if (!error && data) {
+      try {
+        const artifact = MandateArtifactSchema.parse(data.data);
+        return Response.json({ artifact, exists: true });
+      } catch {
+        // fall through
+      }
+    }
   }
-
-  const artifact = readMandateArtifact(path);
-  return Response.json({ artifact, exists: Boolean(artifact) });
+  return Response.json({ artifact: null, exists: false });
 }

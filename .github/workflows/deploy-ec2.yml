@@ -29,10 +29,12 @@ jobs:
             cd ~/narc
 
             echo "--- pulling latest ---"
+            git fetch origin main
+            git checkout main
             git pull origin main
 
-            echo "--- installing deps ---"
-            pnpm install --frozen-lockfile
+            echo "--- installing deps (backend only) ---"
+            pnpm install --frozen-lockfile --filter @narc/shared... --filter @narc/agent-server... --filter @narc/trader... --filter @narc/auditor...
 
             echo "--- building packages ---"
             pnpm --filter @narc/shared build

@@ -1,0 +1,996 @@
+.page {
+  --bg: #030304;
+  --panel: #070708;
+  --line: #202023;
+  --line-strong: #303036;
+  --text: #f4f4f2;
+  --muted: #9a9aa0;
+  --faint: #5f5f66;
+  --red: #ff3b1f;
+  --blue: #48a8ff;
+  --motion-fast: 180ms;
+  --motion-base: 280ms;
+  --motion-slow: 420ms;
+  --ease-out: cubic-bezier(0.25, 0.1, 0.25, 1);
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.035) 0 1px, transparent 1.5px) 0 0 / 32px 32px,
+    linear-gradient(180deg, #050506 0%, var(--bg) 34%, #020202 100%);
+  color: var(--text);
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+}
+
+.reveal {
+  opacity: 0;
+  animation: revealIn var(--motion-slow) var(--ease-out) forwards;
+  animation-delay: var(--enter-delay, 0ms);
+}
+
+.header,
+.hero,
+.ecosystem,
+.featureCards,
+.rowTable,
+.workflow,
+.proof,
+.finalCta,
+.footer {
+  width: min(1320px, calc(100vw - 64px));
+  margin-inline: auto;
+}
+
+.header {
+  height: 92px;
+  display: grid;
+  grid-template-columns: 220px 1fr 260px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.logo {
+  width: 138px;
+  height: auto;
+  display: block;
+}
+
+.brandSvg,
+.ecosystemLogo,
+.featureArtwork,
+.rowGlyph,
+.rowDiagram,
+.proofArtwork,
+.footerLogo {
+  opacity: 0;
+  animation: svgSettle var(--motion-base) var(--ease-out) forwards;
+  animation-delay: var(--enter-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+.logoLink {
+  display: inline-flex;
+  width: max-content;
+}
+
+.nav {
+  display: flex;
+  justify-content: center;
+  gap: 54px;
+  font-size: 14px;
+}
+
+.nav a,
+.signIn,
+.footer a {
+  color: #d6d6d2;
+  text-decoration: none;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out);
+}
+
+.nav a {
+  position: relative;
+}
+
+.nav a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -8px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.nav a:hover,
+.nav a:focus-visible,
+.signIn:hover,
+.signIn:focus-visible,
+.footer a:hover {
+  color: var(--text);
+}
+
+.nav a:hover::after,
+.nav a:focus-visible::after {
+  opacity: 1;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 24px;
+  font-size: 14px;
+}
+
+.headerCta,
+.secondaryButton,
+.primaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  min-height: 52px;
+  padding: 0 32px;
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  text-decoration: none;
+  background: rgba(0, 0, 0, 0.38);
+  border-radius: 3px;
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.headerCta {
+  min-height: 48px;
+  padding-inline: 24px;
+}
+
+.hero {
+  position: relative;
+  min-height: 610px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.hero::before,
+.hero::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 36px;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, var(--line-strong), transparent);
+}
+
+.hero::before {
+  left: 88px;
+}
+
+.hero::after {
+  right: 88px;
+}
+
+.crossLeft,
+.crossRight {
+  position: absolute;
+  top: 72px;
+  width: 136px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--line-strong), transparent);
+}
+
+.crossLeft {
+  left: 12px;
+}
+
+.crossRight {
+  right: 12px;
+}
+
+.crossLeft::after,
+.crossRight::after {
+  content: "+";
+  position: absolute;
+  left: 50%;
+  top: -12px;
+  color: var(--faint);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 22px;
+}
+
+.eyebrow,
+.sectionKicker,
+.ecosystemLabel {
+  color: var(--muted);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.hero h1,
+.heroTitle {
+  max-width: 920px;
+  margin: 28px 0 24px;
+  color: var(--text);
+  font-size: clamp(56px, 7vw, 90px);
+  line-height: 1.05;
+  font-weight: 500;
+}
+
+.heroTitle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.08em;
+}
+
+.heroTitleLine {
+  display: block;
+  overflow: hidden;
+}
+
+.heroTitleSegment {
+  display: block;
+  opacity: 0;
+  transform: translateY(0.8em);
+  animation: headlineLift var(--motion-slow) var(--ease-out) forwards;
+  animation-delay: var(--enter-delay, 0ms);
+  will-change: transform, opacity;
+}
+
+.heroCopy {
+  max-width: 640px;
+  margin: 0;
+  color: #b6b6ba;
+  font-size: 18px;
+  line-height: 1.65;
+}
+
+.heroActions {
+  display: flex;
+  gap: 24px;
+  margin-top: 44px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.headerCta:hover,
+.headerCta:focus-visible,
+.secondaryButton:hover,
+.secondaryButton:focus-visible {
+  border-color: #4a4a4f;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.primaryButton {
+  background: #f4f4f2;
+  color: #050505;
+  border-color: #f4f4f2;
+}
+
+.primaryButton:hover,
+.primaryButton:focus-visible {
+  background: #ffffff;
+  border-color: #ffffff;
+}
+
+.secondaryButton span {
+  color: var(--red);
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.secondaryButton:hover span,
+.secondaryButton:focus-visible span {
+  color: #ff6f59;
+}
+
+.redDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--red);
+  vertical-align: middle;
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out);
+}
+
+.blueDot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--blue);
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.downArrow {
+  position: absolute;
+  bottom: 16px;
+  color: var(--muted);
+  font-size: 28px;
+  animation: arrowCue 1.8s var(--ease-out) infinite;
+}
+
+.ecosystem {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  min-height: 104px;
+  border: 1px solid var(--line);
+  border-top: 0;
+}
+
+.ecosystemLabel {
+  display: flex;
+  align-items: center;
+  padding-left: 40px;
+}
+
+.ecosystemItems {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-left: 1px solid var(--line);
+}
+
+.ecosystemItem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  border-left: 1px solid var(--line);
+  font-size: 19px;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.ecosystemItem:first-child {
+  border-left: 0;
+}
+
+.ecosystemItem img {
+  width: 38px;
+  height: 38px;
+}
+
+.ecosystemLogo {
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.featureCards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: 1px solid var(--line);
+  border-top: 0;
+}
+
+.featureCard {
+  min-height: 360px;
+  padding: 54px 54px 48px;
+  text-align: center;
+  border-left: 1px solid var(--line);
+  transition:
+    background-color var(--motion-base) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+
+.featureCard:first-child {
+  border-left: 0;
+}
+
+.featureCard img {
+  width: 132px;
+  height: 112px;
+  object-fit: contain;
+}
+
+.featureArtwork {
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.featureCard h2,
+.proofCard h3 {
+  margin: 26px 0 16px;
+  font-size: 24px;
+  font-weight: 400;
+}
+
+.featureCard p,
+.proofCard p,
+.workflowStep p,
+.rowText p,
+.footer p {
+  color: #a7a7aa;
+  line-height: 1.7;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.rowTable {
+  border: 1px solid var(--line);
+  border-top: 0;
+}
+
+.featureRow {
+  display: grid;
+  grid-template-columns: 140px 130px 1fr 430px;
+  min-height: 138px;
+  border-top: 1px solid var(--line);
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+
+.featureRow:first-child {
+  border-top: 0;
+}
+
+.rowNumber {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--line);
+  color: var(--text);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 44px;
+  letter-spacing: 0.08em;
+  opacity: 0.92;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out);
+}
+
+.rowIcon {
+  display: grid;
+  place-items: center;
+}
+
+.rowIcon img {
+  width: 76px;
+  height: 76px;
+}
+
+.rowGlyph {
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-right: 50px;
+}
+
+.rowText h3 {
+  margin: 0 0 10px;
+  font-size: 23px;
+  font-weight: 400;
+}
+
+.rowText p {
+  margin: 0;
+  max-width: 520px;
+  font-size: 14px;
+}
+
+.rowVisual {
+  display: grid;
+  place-items: center;
+  border-left: 1px solid var(--line);
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+
+.rowVisual img {
+  width: 360px;
+}
+
+.rowDiagram {
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.workflow {
+  padding: 38px 0 64px;
+  border-inline: 1px solid var(--line);
+}
+
+.sectionKicker {
+  margin: 0 0 46px 28px;
+}
+
+.workflowGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0;
+  position: relative;
+}
+
+.workflowGrid::before {
+  content: "";
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 30px;
+  border-top: 1px dashed #303036;
+}
+
+.workflowStep {
+  position: relative;
+  text-align: center;
+  padding-inline: 24px;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.stepCircle {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: #050506;
+  color: var(--text);
+  font-family: var(--font-geist-mono), monospace;
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.stepDanger {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.workflowStep h3 {
+  margin: 0 0 12px;
+  font-size: 22px;
+  font-weight: 400;
+}
+
+.workflowStep p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.proof {
+  padding: 34px 26px 54px;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(circle, rgba(255,255,255,.09) 0 1px, transparent 1.3px) 0 0 / 12px 12px,
+    rgba(0,0,0,.18);
+}
+
+.proof .sectionKicker {
+  margin-left: 0;
+}
+
+.proofGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 34px;
+}
+
+.proofCard {
+  min-height: 260px;
+  padding: 42px 34px;
+  text-align: center;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.01));
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-base) var(--ease-out);
+}
+
+.proofCard img {
+  width: 100px;
+  height: 82px;
+}
+
+.proofArtwork,
+.footerLogo,
+.brandSvg {
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.finalCta {
+  position: relative;
+  min-height: 210px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-top: 0;
+  overflow: hidden;
+}
+
+.finalCta h2 {
+  margin: 0;
+  font-size: clamp(36px, 5vw, 50px);
+  font-weight: 400;
+}
+
+.ctaDotsLeft,
+.ctaDotsRight {
+  position: absolute;
+  width: 112px;
+  height: 112px;
+  top: 48px;
+  opacity: 0.7;
+  animation: dotGridBreath 3.4s var(--ease-out) infinite alternate;
+}
+
+.ctaDotsLeft {
+  left: 92px;
+}
+
+.ctaDotsRight {
+  right: 92px;
+}
+
+.footer {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 90px;
+  padding: 42px 28px 58px;
+}
+
+.footerBrand img {
+  width: 110px;
+  margin-bottom: 16px;
+}
+
+.footerBrand p {
+  max-width: 220px;
+  margin: 0 0 24px;
+  font-size: 13px;
+}
+
+.socials {
+  display: flex;
+  gap: 20px;
+  color: #d6d6d2;
+  margin-bottom: 44px;
+}
+
+.socials span {
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out);
+}
+
+.footer small {
+  color: var(--muted);
+}
+
+.footerLinks {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.footerLinks h3 {
+  margin: 0 0 22px;
+  color: var(--muted);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.footerLinks a {
+  display: block;
+  margin-bottom: 14px;
+  color: #a7a7aa;
+}
+
+.legal {
+  grid-column: 2;
+  display: flex;
+  justify-content: flex-end;
+  gap: 42px;
+  color: var(--muted);
+}
+
+.page :is(a, button):focus-visible {
+  outline: 1px solid var(--text);
+  outline-offset: 4px;
+}
+
+@media (hover: hover) {
+  .logoLink:hover .brandSvg,
+  .footerBrand:hover .footerLogo {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+
+  .ecosystemItem:hover {
+    background: rgba(255, 255, 255, 0.025);
+    color: var(--text);
+  }
+
+  .ecosystemItem:hover .ecosystemLogo {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+
+  .ecosystemItem:hover .blueDot {
+    opacity: 1;
+  }
+
+  .featureCard:hover,
+  .proofCard:hover {
+    border-color: #414148;
+    background-color: rgba(255, 255, 255, 0.025);
+  }
+
+  .featureCard:hover p,
+  .proofCard:hover p,
+  .featureRow:hover .rowText p,
+  .workflowStep:hover p,
+  .footer a:hover,
+  .socials span:hover {
+    color: #c1c1c6;
+  }
+
+  .featureCard:hover .featureArtwork,
+  .proofCard:hover .proofArtwork {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+
+  .featureRow:hover {
+    background: rgba(255, 255, 255, 0.02);
+    border-color: #2f2f34;
+  }
+
+  .featureRow:hover .rowNumber {
+    color: #ffffff;
+    opacity: 1;
+  }
+
+  .featureRow:hover .rowVisual {
+    border-color: #3a3a40;
+  }
+
+  .featureRow:hover .rowGlyph {
+    opacity: 1;
+    transform: rotate(-3deg);
+  }
+
+  .featureRow:hover .rowDiagram {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+
+  .workflowStep:hover .stepCircle {
+    border-color: #4a4a4f;
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .workflowStep:hover .stepDanger {
+    border-color: var(--red);
+    color: #ff6f59;
+  }
+
+  .socials span:hover {
+    color: var(--text);
+  }
+}
+
+@keyframes revealIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes headlineLift {
+  from {
+    opacity: 0;
+    transform: translateY(0.8em);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes svgSettle {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes arrowCue {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@keyframes dotGridBreath {
+  from {
+    opacity: 0.42;
+  }
+  to {
+    opacity: 0.78;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page {
+    scroll-behavior: auto;
+  }
+
+  .reveal,
+  .heroTitleSegment,
+  .brandSvg,
+  .ecosystemLogo,
+  .featureArtwork,
+  .rowGlyph,
+  .rowDiagram,
+  .proofArtwork,
+  .footerLogo,
+  .downArrow,
+  .ctaDotsLeft,
+  .ctaDotsRight {
+    animation: none;
+    opacity: 1;
+  }
+
+  .heroTitleSegment {
+    transform: none;
+  }
+
+  .nav a,
+  .signIn,
+  .footer a,
+  .headerCta,
+  .secondaryButton,
+  .primaryButton,
+  .secondaryButton span,
+  .redDot,
+  .blueDot,
+  .ecosystemItem,
+  .featureCard,
+  .featureCard p,
+  .proofCard,
+  .proofCard p,
+  .featureRow,
+  .rowNumber,
+  .rowVisual,
+  .rowText p,
+  .workflowStep,
+  .workflowStep p,
+  .stepCircle,
+  .brandSvg,
+  .ecosystemLogo,
+  .featureArtwork,
+  .rowGlyph,
+  .rowDiagram,
+  .proofArtwork,
+  .footerLogo,
+  .socials span {
+    transition: none;
+  }
+
+  .brandSvg,
+  .ecosystemLogo,
+  .featureArtwork,
+  .rowGlyph,
+  .rowDiagram,
+  .proofArtwork,
+  .footerLogo {
+    transform: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .header,
+  .hero,
+  .ecosystem,
+  .featureCards,
+  .rowTable,
+  .workflow,
+  .proof,
+  .finalCta,
+  .footer {
+    width: min(100% - 28px, 1320px);
+  }
+
+  .header {
+    grid-template-columns: 1fr auto;
+  }
+
+  .nav {
+    display: none;
+  }
+
+  .hero {
+    min-height: 560px;
+  }
+
+  .hero::before,
+  .hero::after,
+  .crossLeft,
+  .crossRight {
+    display: none;
+  }
+
+  .ecosystem,
+  .featureCards,
+  .proofGrid,
+  .footer {
+    grid-template-columns: 1fr;
+  }
+
+  .ecosystemItems,
+  .workflowGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .ecosystemItem,
+  .featureCard {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .featureRow {
+    grid-template-columns: 90px 90px 1fr;
+  }
+
+  .rowVisual {
+    grid-column: 1 / -1;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 18px;
+  }
+
+  .workflowGrid::before,
+  .ctaDotsLeft,
+  .ctaDotsRight {
+    display: none;
+  }
+
+  .workflowStep {
+    margin-bottom: 42px;
+  }
+
+  .footerLinks,
+  .legal {
+    grid-column: auto;
+  }
+}

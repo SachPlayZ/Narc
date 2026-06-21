@@ -6,7 +6,10 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -16,6 +19,7 @@
   "dependencies": {
     "@mysten-incubation/memwal": "latest",
     "@narc/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.108.2",
     "zod": "^4.2.1"
   },
   "devDependencies": {

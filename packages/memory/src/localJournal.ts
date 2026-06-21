@@ -10,6 +10,7 @@ import {
   FindingRecordSchema
 } from "@narc/shared";
 import type { NarcJournal } from "./journal.js";
+import { syncDecision, syncFinding, syncOutcome } from "./supabaseSync.js";
 
 /**
  * LocalFallbackJournal — writes JSONL files to LOCAL_ACTIVITY_DIR.
@@ -25,18 +26,21 @@ export class LocalFallbackJournal implements NarcJournal {
   async writeDecision(record: DecisionRecord): Promise<string> {
     const path = join(this.rootDir, `${record.agentId}-decisions.jsonl`);
     await appendJsonLine(path, record);
+    syncDecision(record);
     return `local:${path}:${record.recordId}`;
   }
 
   async writeOutcome(record: OutcomeRecord): Promise<string> {
     const path = join(this.rootDir, `${record.agentId}-outcomes.jsonl`);
     await appendJsonLine(path, record);
+    syncOutcome(record);
     return `local:${path}:${record.recordId}`;
   }
 
   async writeFinding(record: FindingRecord): Promise<string> {
     const path = join(this.rootDir, `${record.auditorId}-findings.jsonl`);
     await appendJsonLine(path, record);
+    syncFinding(record);
     return `local:${path}:${record.findingId}`;
   }
 

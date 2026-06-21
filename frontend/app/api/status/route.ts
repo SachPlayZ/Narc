@@ -54,7 +54,7 @@ export async function GET() {
       throw new Error("AGENT_POLICY_OBJECT_ID is not configured.");
     }
     const rpcUrl =
-      process.env.SUI_RPC_URL ?? repoEnv.SUI_RPC_URL ?? getJsonRpcFullnodeUrl("testnet");
+      process.env.SUI_RPC_URL || repoEnv.SUI_RPC_URL || getJsonRpcFullnodeUrl("testnet");
     const client = new SuiJsonRpcClient({ url: rpcUrl, network: "testnet" });
 
     const object = await client.getObject({

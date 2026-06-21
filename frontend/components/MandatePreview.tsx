@@ -19,8 +19,8 @@ export function MandatePreview({ values }: Props) {
     "Both";
 
   return (
-    <div className="space-y-4">
-      <h3 className="text-[26px] leading-tight text-zinc-50 sm:text-[38px]">
+    <div className="space-y-2.5">
+      <h3 className="text-[18px] leading-tight text-zinc-50 sm:text-[24px]">
         Your agent will
       </h3>
 
@@ -78,41 +78,41 @@ export function MandatePreview({ values }: Props) {
         text={`Allow ${sideLabel.toLowerCase()} trading`}
       />
 
-      <div className="rounded-[12px] border border-[#ff4d24] bg-[#0d0403] px-4 py-3.5">
-        <div className="flex items-center gap-4">
-          <span className="grid h-10 w-10 place-items-center rounded-[8px] border border-[#ff4d24] text-[#ff4d24]">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
+      <div className="rounded-[12px] border border-[#ff4d24] bg-[#0d0403] px-3 py-2.5">
+        <div className="flex items-center gap-2.5">
+          <span className="grid h-7 w-7 place-items-center rounded-[7px] border border-[#ff4d24] text-[#ff4d24]">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
               <path d="M6 6l12 12" />
               <path d="M18 6 6 18" />
             </svg>
           </span>
-          <p className="font-mono text-[14px] uppercase tracking-[0.08em] text-[#ff5c3b] sm:text-[16px]">
+          <p className="font-mono text-[11px] uppercase tracking-[0.06em] text-[#ff5c3b] sm:text-[12px]">
             Any trade outside these rules will be blocked by NARC
           </p>
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-4 rounded-[12px] border border-white/15 bg-black/30 px-4 py-3.5">
-        <div className="flex items-center gap-4">
-          <span className="grid h-10 w-10 place-items-center rounded-[8px] border border-white/15 text-zinc-100">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-6 w-6">
+      <div className="flex items-center justify-between gap-3 rounded-[12px] border border-white/15 bg-black/30 px-3 py-2.5">
+        <div className="flex items-center gap-2.5">
+          <span className="grid h-7 w-7 place-items-center rounded-[7px] border border-white/15 text-zinc-100">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-5 w-5">
               <path d="m12 3 7 4v10l-7 4-7-4V7l7-4Z" />
               <path d="M5 7l7 4 7-4" />
               <path d="M12 11v10" />
             </svg>
           </span>
           <div>
-            <div className="font-mono text-[14px] uppercase tracking-[0.08em] text-zinc-100">
+            <div className="font-mono text-[11px] uppercase tracking-[0.06em] text-zinc-100">
               Evidence stored on Walrus
             </div>
-            <div className="mt-1 font-mono text-[12px] uppercase tracking-[0.12em] text-zinc-500">
+            <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-zinc-500">
               Ready for on-chain enforcement
             </div>
           </div>
         </div>
-        <div className="hidden items-center gap-6 sm:flex">
-          <div className="h-4 w-32 bg-[radial-gradient(circle,rgba(255,255,255,0.65)_1px,transparent_1.5px)] bg-[length:8px_8px] bg-center bg-no-repeat opacity-80" />
-          <span className="font-mono text-[14px] uppercase tracking-[0.08em] text-zinc-300">
+        <div className="hidden items-center gap-3 sm:flex">
+          <div className="h-3 w-18 bg-[radial-gradient(circle,rgba(255,255,255,0.65)_1px,transparent_1.5px)] bg-[length:8px_8px] bg-center bg-no-repeat opacity-80" />
+          <span className="font-mono text-[11px] uppercase tracking-[0.06em] text-zinc-300">
             e37f...9a2b
           </span>
         </div>
@@ -133,28 +133,28 @@ function PreviewItem({
   value?: string;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-[12px] border border-white/15 bg-black/25 px-4 py-3.5">
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#36d46c] text-[#36d46c]">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-6 w-6">
+    <div className="flex items-center gap-2 rounded-[12px] border border-white/15 bg-black/25 px-3 py-2">
+      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[#36d46c] text-[#36d46c]">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4.5 w-4.5">
           <path d="m5 12 5 5L19 8" />
         </svg>
       </span>
-      <div className="h-8 w-px shrink-0 bg-white/15" />
-      <span className="grid h-9 w-9 shrink-0 place-items-center text-zinc-100">
+      <div className="h-5 w-px shrink-0 bg-white/15" />
+      <span className="grid h-6 w-6 shrink-0 place-items-center text-zinc-100">
         {icon}
       </span>
       {value ? (
-        <span className="grid h-9 min-w-9 shrink-0 place-items-center rounded-[6px] border border-white/20 px-2 font-mono text-[15px] text-zinc-100">
+        <span className="grid h-6 min-w-6 shrink-0 place-items-center rounded-[6px] border border-white/20 px-1 font-mono text-[11px] text-zinc-100">
           {value}
         </span>
       ) : null}
-      <span className="min-w-0 flex-1 font-mono text-[14px] leading-relaxed text-zinc-100 sm:text-[16px]">
+      <span className="min-w-0 flex-1 font-mono text-[11px] leading-relaxed text-zinc-100 sm:text-[12px]">
         {text}
       </span>
-      <span className="hidden rounded-[8px] border border-white/10 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-zinc-400 lg:block">
+      <span className="hidden rounded-[8px] border border-white/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-zinc-400 lg:block">
         {label}
       </span>
-      <span className="hidden h-4 w-16 bg-[radial-gradient(circle,rgba(255,255,255,0.55)_1px,transparent_1.5px)] bg-[length:8px_8px] bg-center bg-no-repeat opacity-70 lg:block" />
+      <span className="hidden h-2.5 w-10 bg-[radial-gradient(circle,rgba(255,255,255,0.55)_1px,transparent_1.5px)] bg-[length:8px_8px] bg-center bg-no-repeat opacity-70 lg:block" />
     </div>
   );
 }

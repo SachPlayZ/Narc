@@ -50,7 +50,7 @@ function HeaderPill({
   dotClassName?: string;
 }) {
   return (
-    <div className="inline-flex h-10 items-center gap-2.5 rounded-[10px] border border-white/20 bg-black/55 px-3.5 text-[11px] uppercase tracking-[0.16em] text-zinc-100 sm:text-[12px]">
+    <div className="inline-flex h-9 items-center gap-2 rounded-[10px] border border-white/20 bg-black/55 px-3 text-[10px] uppercase tracking-[0.14em] text-zinc-100 sm:text-[11px]">
       {icon}
       <span>{label}</span>
       {dotClassName ? <span className={`h-2.5 w-2.5 rounded-full ${dotClassName}`} /> : null}
@@ -60,19 +60,19 @@ function HeaderPill({
 
 function StepIndicator({ current }: { current: Step }) {
   return (
-    <div className="mx-auto flex w-full max-w-[660px] items-center justify-between gap-3">
+    <div className="mx-auto flex w-full max-w-[620px] items-center justify-between gap-2">
       {steps.map((step, index) => {
         const isActive = step.value === current;
         const isDone = step.value < current;
 
         return (
-          <div key={step.value} className="flex min-w-0 flex-1 items-center justify-center gap-3">
+          <div key={step.value} className="flex min-w-0 flex-1 items-center justify-center gap-2">
             <div className="hidden h-[1px] flex-1 bg-white/25 first:hidden md:block" style={{ opacity: index === 0 ? 0 : 1 }} />
-            <div className="flex flex-col items-center gap-3">
-              <div className="flex items-center gap-3">
-                <div className="hidden h-4 w-6 bg-[radial-gradient(circle,rgba(255,255,255,0.5)_1px,transparent_1.5px)] bg-[length:8px_8px] bg-center bg-no-repeat md:block" />
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex items-center gap-2">
+                <div className="hidden h-3 w-5 bg-[radial-gradient(circle,rgba(255,255,255,0.5)_1px,transparent_1.5px)] bg-[length:8px_8px] bg-center bg-no-repeat md:block" />
                 <div
-                  className={`grid h-12 w-12 place-items-center rounded-full border font-mono text-[24px] leading-none ${
+                  className={`grid h-10 w-10 place-items-center rounded-full border font-mono text-[20px] leading-none ${
                     isActive
                       ? "border-[#ff4d24] text-[#ff4d24]"
                       : isDone
@@ -82,9 +82,9 @@ function StepIndicator({ current }: { current: Step }) {
                 >
                   {isDone ? "✓" : `0${step.value}`}
                 </div>
-                <div className="hidden h-4 w-6 bg-[radial-gradient(circle,rgba(255,255,255,0.5)_1px,transparent_1.5px)] bg-[length:8px_8px] bg-center bg-no-repeat md:block" />
+                <div className="hidden h-3 w-5 bg-[radial-gradient(circle,rgba(255,255,255,0.5)_1px,transparent_1.5px)] bg-[length:8px_8px] bg-center bg-no-repeat md:block" />
               </div>
-              <div className={`text-center font-mono text-[12px] tracking-[0.14em] ${isActive || isDone ? "text-zinc-100" : "text-zinc-500"}`}>
+              <div className={`text-center font-mono text-[11px] tracking-[0.12em] ${isActive || isDone ? "text-zinc-100" : "text-zinc-500"}`}>
                 {step.label}
               </div>
             </div>
@@ -98,15 +98,15 @@ function StepIndicator({ current }: { current: Step }) {
 
 function FooterRail() {
   return (
-    <footer className="border-t border-white/10 px-4 py-4 sm:px-8">
-      <div className="mx-auto flex w-full max-w-[1680px] items-center justify-between gap-4 text-[11px] uppercase tracking-[0.16em] text-zinc-400">
-        <div className="flex items-center gap-4">
-          <img src={asset("ecosystem-walrus.svg")} alt="" className="h-7 w-7 opacity-80" />
+    <footer className="border-t border-white/10 px-4 py-3 sm:px-8">
+      <div className="mx-auto flex w-full max-w-[1680px] items-center justify-between gap-4 text-[10px] uppercase tracking-[0.14em] text-zinc-400">
+        <div className="flex items-center gap-4 pl-12 sm:pl-14">
+          <img src={asset("ecosystem-walrus.svg")} alt="" className="h-6 w-6 opacity-80" />
           <span>Walrus Evidence</span>
           <span className="h-2.5 w-2.5 rounded-full bg-[#ff4d24]" />
         </div>
         <div className="hidden items-center gap-3 md:flex">
-          <div className="h-[1px] w-28 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.45),transparent)]" />
+          <div className="h-[1px] w-24 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.45),transparent)]" />
           <div className="flex items-center gap-3">
             {Array.from({ length: 13 }).map((_, index) => (
               <span
@@ -115,12 +115,12 @@ function FooterRail() {
               />
             ))}
           </div>
-          <div className="h-[1px] w-28 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.45),transparent)]" />
+          <div className="h-[1px] w-24 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.45),transparent)]" />
         </div>
         <div className="flex items-center gap-4">
           <span className="h-2.5 w-2.5 rounded-full bg-[#ff4d24]" />
           <span>Sui Enforcement</span>
-          <img src={asset("ecosystem-sui.svg")} alt="" className="h-7 w-7 opacity-80" />
+          <img src={asset("ecosystem-sui.svg")} alt="" className="h-6 w-6 opacity-80" />
         </div>
       </div>
     </footer>

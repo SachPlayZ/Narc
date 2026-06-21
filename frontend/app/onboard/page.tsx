@@ -228,8 +228,8 @@ export default function OnboardPage() {
           </div>
         </header>
 
-        <main className="px-4 py-6 sm:px-8 sm:py-7">
-          <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-6">
+        <main className="px-4 py-4 sm:px-8 sm:py-5">
+          <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4">
             <StepIndicator current={currentStep} />
 
             {currentStep === 1 && (
@@ -260,7 +260,7 @@ export default function OnboardPage() {
 
             {currentStep === 2 && (
               <section className="grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] lg:items-start">
-                <div className="rounded-[14px] border border-white/15 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))] p-5 sm:p-6">
+                <div className="rounded-[14px] border border-white/15 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))] p-4 sm:p-5">
                   <div className="mb-5">
                     <h1 className="font-mono text-[24px] uppercase tracking-[0.08em] text-zinc-50 sm:text-[34px]">
                       Define Mandate
@@ -290,7 +290,7 @@ export default function OnboardPage() {
                   />
                 </div>
 
-                <div className="rounded-[14px] border border-white/15 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))] p-5 sm:p-6">
+                <div className="rounded-[14px] border border-white/15 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))] p-4 sm:p-5">
                   <div className="mb-5 flex items-center justify-between gap-4 border-b border-dashed border-white/15 pb-4">
                     <div className="font-mono text-[13px] uppercase tracking-[0.14em] text-zinc-400">
                       Policy Preview

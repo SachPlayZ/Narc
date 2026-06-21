@@ -11,6 +11,7 @@ on:
       - "packages/memory/**"
       - "pnpm-lock.yaml"
       - "pm2.config.cjs"
+      - ".github/workflows/deploy-ec2.yml"
 
 jobs:
   deploy:

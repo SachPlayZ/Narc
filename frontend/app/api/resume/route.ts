@@ -60,9 +60,10 @@ export async function POST(request: Request) {
     const tx = new Transaction();
     tx.moveCall({
       target: `${NARC_POLICY_PACKAGE_ID}::narc_policy::override_resume`,
+      // ABI: policy first, OwnerCap second.
       arguments: [
-        tx.object(OWNER_CAP_ID),
         tx.object(AGENT_POLICY_OBJECT_ID),
+        tx.object(OWNER_CAP_ID),
         tx.pure.vector("u8", parseByteArgument(reason)),
       ],
     });

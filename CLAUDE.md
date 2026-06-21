@@ -93,8 +93,10 @@ LLM_API_KEY= / LLM_MODEL=
 - `AgentPolicy has key` = SHARED object with `paused:bool` + `mandate_hash:vector<u8>`.
 - `assert_active(&AgentPolicy)` aborts (custom error code) if paused — the trader calls it in
   the SAME PTB as the order, so a paused policy makes the order fail atomically.
-- `pause(&GuardianCap, &mut AgentPolicy, reason_blob, ctx)` stores the Walrus Finding blob id +
-  `event::emit(Paused{...})`. `override_resume(&OwnerCap, &mut AgentPolicy, ctx)` + `Resumed`.
+- `pause(&mut AgentPolicy, &GuardianCap, reason_blob, ctx)` stores the Walrus Finding blob id +
+  `event::emit(Paused{...})`. `override_resume(&mut AgentPolicy, &OwnerCap, reason, ctx)` + `Resumed`.
+  (Object first, capability second — Move 2024 method-associativity convention. Off-chain PTB
+  `arguments` must match this order: policy object, then cap.)
 - Caps are passed by reference (`_: &GuardianCap`) — the type system rejects callers without them;
   no address checks in the body. Write Move unit tests for pause→assert abort and override→clear.
 - `init` mints + distributes caps and shares the policy. Record all ids in `shared/env.ts`.

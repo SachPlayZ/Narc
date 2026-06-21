@@ -122,9 +122,10 @@ async function executePolicyTx(
     const tx = new Transaction();
     tx.moveCall({
       target: `${policy.NARC_POLICY_PACKAGE_ID}::narc_policy::${fn}`,
+      // ABI: object first, capability second (Move 2024 method-associativity convention).
       arguments: [
-        tx.object(capId),
         tx.object(policyId),
+        tx.object(capId),
         tx.pure.vector("u8", bytes)
       ]
     });

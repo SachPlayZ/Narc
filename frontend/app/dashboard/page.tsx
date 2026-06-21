@@ -23,9 +23,10 @@ function buildResumeTx(reason: string): Transaction {
   const tx = new Transaction();
   tx.moveCall({
     target: `${PACKAGE_ID}::narc_policy::override_resume`,
+    // ABI: policy first, OwnerCap second.
     arguments: [
-      tx.object(OWNER_CAP_ID),
       tx.object(POLICY_ID),
+      tx.object(OWNER_CAP_ID),
       tx.pure.vector("u8", [...new TextEncoder().encode(reason)]),
     ],
   });

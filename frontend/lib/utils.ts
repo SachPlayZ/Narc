@@ -4,7 +4,7 @@ export function shortAddr(s: string): string {
 }
 
 export function explorerUrl(digest: string): string {
-  return `https://suiexplorer.com/txblock/${digest}?network=testnet`;
+  return `https://suiscan.xyz/testnet/tx/${digest}`;
 }
 
 export function walrusUrl(blobId: string): string {

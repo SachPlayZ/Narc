@@ -8,10 +8,8 @@ import type {
 } from "@narc/shared";
 import Link from "next/link";
 
-const EXPLORER_BASE = "https://suiexplorer.com/txblock";
-
 function explorerUrl(digest: string) {
-  return `${EXPLORER_BASE}/${digest}?network=testnet`;
+  return `https://suiscan.xyz/testnet/tx/${digest}`;
 }
 
 function shortAddr(s: string) {

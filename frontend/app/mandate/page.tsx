@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
+import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import type { MandateArtifact } from "@narc/shared";
 import { MandateForm, type MandateFormValues } from "../../components/MandateForm";
 import { shortAddr, formatRelative } from "../../lib/utils";
@@ -10,11 +11,13 @@ import { shortAddr, formatRelative } from "../../lib/utils";
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 export default function MandatePage() {
-  const { data: mandateData, mutate: refetch } = useSWR("/api/mandate", fetcher);
+  const account = useCurrentAccount();
+  const agentId = account?.address ?? "trader-a";
+  const { data: mandateData, mutate: refetch } = useSWR(`/api/mandate?agentId=${encodeURIComponent(agentId)}`, fetcher);
   const { data: statusData } = useSWR("/api/status", fetcher, { refreshInterval: 5000 });
-  const { data: decisionsData } = useSWR("/api/decisions", fetcher);
-  const { data: outcomesData } = useSWR("/api/outcomes", fetcher);
-  const { data: findingsData } = useSWR("/api/findings", fetcher);
+  const { data: decisionsData } = useSWR(`/api/decisions?agentId=${encodeURIComponent(agentId)}`, fetcher);
+  const { data: outcomesData } = useSWR(`/api/outcomes?agentId=${encodeURIComponent(agentId)}`, fetcher);
+  const { data: findingsData } = useSWR(`/api/findings?agentId=${encodeURIComponent(agentId)}`, fetcher);
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -42,7 +45,7 @@ export default function MandatePage() {
       const res = await fetch("/api/mandate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+        body: JSON.stringify({ ...values, agentId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");

@@ -12,20 +12,27 @@ function activityDir(): string {
   return resolve(cwd, "../.narc/activity");
 }
 
+function pidFile(agentId: string): string {
+  return join(activityDir(), `agent-${agentId}.pid`);
+}
+
 function pidAlive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
-export async function POST() {
-  const proxy = await proxyToAgent("/start", "POST");
+export async function POST(request: Request) {
+  const body = await request.json().catch(() => ({}));
+  const agentId: string = body.agentId ?? process.env.NARC_AGENT_ID ?? "trader-a";
+
+  const proxy = await proxyToAgent("/start", "POST", { agentId });
   if (proxy) return new Response(proxy.body, { status: proxy.status, headers: { "Content-Type": "application/json" } });
 
   const dir = activityDir();
-  const pidFile = join(dir, "agent.pid");
+  const pf = pidFile(agentId);
 
-  if (existsSync(pidFile)) {
+  if (existsSync(pf)) {
     try {
-      const existing = JSON.parse(readFileSync(pidFile, "utf8"));
+      const existing = JSON.parse(readFileSync(pf, "utf8"));
       const traderAlive = typeof existing.traderPid === "number" && pidAlive(existing.traderPid);
       const narcAlive = typeof existing.narcPid === "number" && pidAlive(existing.narcPid);
       if (traderAlive || narcAlive) {
@@ -41,18 +48,19 @@ export async function POST() {
 
   mkdirSync(dir, { recursive: true });
   const root = resolve(/*turbopackIgnore: true*/ process.cwd(), "..");
+  const agentEnv = { ...process.env, NARC_AGENT_ID: agentId, NARC_AUDITOR_ID: agentId };
 
   const trader = spawn("pnpm", ["--filter", "@narc/trader", "a:loop"], {
-    cwd: root, detached: true, stdio: "ignore", env: process.env,
+    cwd: root, detached: true, stdio: "ignore", env: agentEnv,
   });
   trader.unref();
 
   const narc = spawn("pnpm", ["--filter", "@narc/auditor", "narc:run"], {
-    cwd: root, detached: true, stdio: "ignore", env: process.env,
+    cwd: root, detached: true, stdio: "ignore", env: agentEnv,
   });
   narc.unref();
 
-  const pids = { traderPid: trader.pid ?? null, narcPid: narc.pid ?? null };
-  writeFileSync(pidFile, JSON.stringify(pids));
+  const pids = { traderPid: trader.pid ?? null, narcPid: narc.pid ?? null, agentId };
+  writeFileSync(pf, JSON.stringify(pids));
   return Response.json(pids);
 }

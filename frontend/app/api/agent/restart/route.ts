@@ -2,6 +2,7 @@ import { existsSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "node
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { proxyToAgent } from "@/lib/agent-proxy";
+import type { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 
@@ -12,12 +13,15 @@ function activityDir(): string {
   return resolve(cwd, "../.narc/activity");
 }
 
-export async function POST() {
-  const proxy = await proxyToAgent("/restart", "POST");
+export async function POST(request: NextRequest) {
+  const body = await request.json().catch(() => ({}));
+  const agentId: string = body.agentId ?? process.env.NARC_AGENT_ID ?? "trader-a";
+
+  const proxy = await proxyToAgent("/restart", "POST", { agentId });
   if (proxy) return new Response(proxy.body, { status: proxy.status, headers: { "Content-Type": "application/json" } });
 
   const dir = activityDir();
-  const pidFile = join(dir, "agent.pid");
+  const pidFile = join(dir, `agent-${agentId}.pid`);
 
   if (existsSync(pidFile)) {
     try {
@@ -35,18 +39,19 @@ export async function POST() {
 
   mkdirSync(dir, { recursive: true });
   const root = resolve(/*turbopackIgnore: true*/ process.cwd(), "..");
+  const agentEnv = { ...process.env, NARC_AGENT_ID: agentId, NARC_AUDITOR_ID: agentId };
 
   const trader = spawn("pnpm", ["--filter", "@narc/trader", "a:loop"], {
-    cwd: root, detached: true, stdio: "ignore", env: process.env,
+    cwd: root, detached: true, stdio: "ignore", env: agentEnv,
   });
   trader.unref();
 
   const narc = spawn("pnpm", ["--filter", "@narc/auditor", "narc:run"], {
-    cwd: root, detached: true, stdio: "ignore", env: process.env,
+    cwd: root, detached: true, stdio: "ignore", env: agentEnv,
   });
   narc.unref();
 
-  const pids = { traderPid: trader.pid ?? null, narcPid: narc.pid ?? null };
+  const pids = { traderPid: trader.pid ?? null, narcPid: narc.pid ?? null, agentId };
   writeFileSync(pidFile, JSON.stringify(pids));
   return Response.json(pids);
 }

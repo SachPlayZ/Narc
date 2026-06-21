@@ -1,15 +1,17 @@
 import { createMandateArtifact, MandateArtifactSchema, MandateSchema } from "@narc/shared";
 import { supabase } from "@/lib/supabase";
+import type { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const AGENT_ID = process.env.NARC_AGENT_ID ?? "trader-a";
+const DEFAULT_AGENT_ID = process.env.NARC_AGENT_ID ?? "trader-a";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
     const {
+      agentId,
       maxNotionalQuote,
       maxCumulativeNotionalQuote,
       allowedPairs,
@@ -17,6 +19,8 @@ export async function POST(request: Request) {
       maxSlippageBps,
       expiresInHours,
     } = body;
+
+    const resolvedAgentId: string = agentId ?? DEFAULT_AGENT_ID;
 
     if (
       typeof maxNotionalQuote !== "number" ||
@@ -54,7 +58,7 @@ export async function POST(request: Request) {
     }
 
     const { error } = await supabase.from("narc_mandates").upsert({
-      agent_id: AGENT_ID,
+      agent_id: resolvedAgentId,
       ts: artifact.writtenAt,
       data: artifact,
     });
@@ -66,7 +70,9 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const agentId = request.nextUrl.searchParams.get("agentId") ?? DEFAULT_AGENT_ID;
+
   if (!supabase) {
     return Response.json({ artifact: null, exists: false });
   }
@@ -74,7 +80,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("narc_mandates")
     .select("data")
-    .eq("agent_id", AGENT_ID)
+    .eq("agent_id", agentId)
     .single();
 
   if (error || !data) return Response.json({ artifact: null, exists: false });

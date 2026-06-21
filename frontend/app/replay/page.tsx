@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import type {
   DecisionRecord,
   FindingRecord,
@@ -30,6 +31,8 @@ function scoreColor(score: number) {
 }
 
 export default function ReplayPage() {
+  const account = useCurrentAccount();
+  const agentId = account?.address ?? "trader-a";
   const [decisions, setDecisions] = useState<DecisionRecord[]>([]);
   const [outcomes, setOutcomes] = useState<OutcomeRecord[]>([]);
   const [findings, setFindings] = useState<FindingRecord[]>([]);
@@ -37,10 +40,11 @@ export default function ReplayPage() {
   const [loading, setLoading] = useState(true);
 
   const fetchAll = useCallback(async () => {
+    const q = `agentId=${encodeURIComponent(agentId)}`;
     const [dRes, oRes, fRes] = await Promise.allSettled([
-      fetch("/api/decisions").then((r) => r.json()),
-      fetch("/api/outcomes").then((r) => r.json()),
-      fetch("/api/findings").then((r) => r.json()),
+      fetch(`/api/decisions?${q}`).then((r) => r.json()),
+      fetch(`/api/outcomes?${q}`).then((r) => r.json()),
+      fetch(`/api/findings?${q}`).then((r) => r.json()),
     ]);
 
     let ds: DecisionRecord[] = [];
@@ -66,7 +70,7 @@ export default function ReplayPage() {
     setOutcomes(os);
     setFindings(fs);
     setLoading(false);
-  }, []);
+  }, [agentId]);
 
   useEffect(() => {
     fetchAll();

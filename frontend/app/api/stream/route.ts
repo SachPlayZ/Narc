@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
     return new Response("Supabase not configured", { status: 503 });
   }
 
+  const agentId = request.nextUrl.searchParams.get("agentId") ?? process.env.NARC_AGENT_ID ?? "trader-a";
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -26,18 +27,17 @@ export async function GET(request: NextRequest) {
         } catch {}
       };
 
-      // Keep-alive heartbeat every 25s
       const heartbeat = setInterval(() => {
         try { controller.enqueue(encoder.encode(": heartbeat\n\n")); } catch {}
       }, 25_000);
 
       const channel = sb
-        .channel("narc-stream")
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "narc_decisions" },
+        .channel(`narc-stream-${agentId}`)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "narc_decisions", filter: `agent_id=eq.${agentId}` },
           (p) => send("decision", p.new))
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "narc_outcomes" },
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "narc_outcomes", filter: `agent_id=eq.${agentId}` },
           (p) => send("outcome", p.new))
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "narc_findings" },
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "narc_findings", filter: `auditor_id=eq.${agentId}` },
           (p) => send("finding", p.new))
         .subscribe();
 

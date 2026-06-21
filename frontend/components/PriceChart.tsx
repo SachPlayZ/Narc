@@ -24,8 +24,48 @@ type ChartPoint = {
   buy?: number;
   sell?: number;
   aborted?: number;
-  label: string;
+  sizeQuote: number;
+  side: string;
+  status: string;
+  reasoning: string;
 };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function CustomTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null;
+  const d: ChartPoint = payload[0]?.payload;
+  if (!d) return null;
+
+  const sideLabel = d.side === "bid" ? "BUY" : "SELL";
+  const sideColor = d.side === "bid" ? "#22c55e" : "#ef4444";
+  const executed = d.status === "EXECUTED";
+
+  return (
+    <div style={{
+      background: "#18181b",
+      border: "1px solid #3f3f46",
+      borderRadius: 6,
+      fontSize: 11,
+      padding: "8px 10px",
+      maxWidth: 260,
+      lineHeight: 1.6,
+    }}>
+      <div style={{ color: "#a1a1aa", marginBottom: 4 }}>Tick #{d.tick}</div>
+      <div style={{ color: "#e4e4e7" }}>Mid price : {d.price.toFixed(4)}</div>
+      <div style={{ color: sideColor }}>
+        {sideLabel} {d.sizeQuote.toFixed(2)} USDC @ {d.price.toFixed(4)}
+      </div>
+      <div style={{ color: executed ? "#22c55e" : "#71717a", marginTop: 2 }}>
+        Status : {d.status}
+      </div>
+      {d.reasoning && (
+        <div style={{ color: "#71717a", marginTop: 4, fontStyle: "italic" }}>
+          {d.reasoning.length > 120 ? d.reasoning.slice(0, 120) + "…" : d.reasoning}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function PriceChart({ decisions, outcomes, currentPrice }: Props) {
   const outcomeMap = new Map(outcomes.map((o) => [o.decisionRecordId, o]));
@@ -35,6 +75,7 @@ export function PriceChart({ decisions, outcomes, currentPrice }: Props) {
     const executed = outcome?.executed ?? false;
     const side = d.intent.side;
     const price = d.observation.midPrice;
+    const status = outcome?.status ?? "NO_OUTCOME";
 
     return {
       tick: d.tick,
@@ -42,7 +83,10 @@ export function PriceChart({ decisions, outcomes, currentPrice }: Props) {
       buy: executed && side === "bid" ? price : undefined,
       sell: executed && side === "ask" ? price : undefined,
       aborted: !executed ? price : undefined,
-      label: `Tick #${d.tick}`,
+      sizeQuote: d.intent.sizeQuote,
+      side,
+      status,
+      reasoning: d.reasoning,
     };
   });
 
@@ -78,14 +122,15 @@ export function PriceChart({ decisions, outcomes, currentPrice }: Props) {
           tickLine={false}
           width={52}
         />
-        <Tooltip
-          contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 6, fontSize: 11 }}
-          labelStyle={{ color: "#a1a1aa" }}
-          formatter={(value, name) => [typeof value === "number" ? formatPrice(value) : String(value ?? ""), String(name ?? "")]}
-          labelFormatter={(label) => `Tick #${label}`}
-        />
+        <Tooltip content={<CustomTooltip />} />
         {currentPrice && (
-          <ReferenceLine y={currentPrice} stroke="#f97316" strokeDasharray="4 2" strokeWidth={1} label={{ value: "live", fill: "#f97316", fontSize: 9 }} />
+          <ReferenceLine
+            y={currentPrice}
+            stroke="#f97316"
+            strokeDasharray="4 2"
+            strokeWidth={1}
+            label={{ value: "live", fill: "#f97316", fontSize: 9 }}
+          />
         )}
         <Line
           type="monotone"
@@ -95,9 +140,9 @@ export function PriceChart({ decisions, outcomes, currentPrice }: Props) {
           dot={false}
           name="Mid price"
         />
-        <Scatter dataKey="buy" fill="#22c55e" name="Buy executed" shape={<UpArrow />} />
-        <Scatter dataKey="sell" fill="#ef4444" name="Sell executed" shape={<DownArrow />} />
-        <Scatter dataKey="aborted" fill="#52525b" name="Aborted" shape={<DotMark />} />
+        <Scatter dataKey="buy" fill="#22c55e" name="buy executed" shape={<UpArrow />} />
+        <Scatter dataKey="sell" fill="#ef4444" name="sell executed" shape={<DownArrow />} />
+        <Scatter dataKey="aborted" fill="#52525b" name="aborted" shape={<DotMark />} />
       </ComposedChart>
     </ResponsiveContainer>
   );

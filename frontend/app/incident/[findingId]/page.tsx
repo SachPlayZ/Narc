@@ -3,6 +3,7 @@
 import { use } from "react";
 import Link from "next/link";
 import useSWR from "swr";
+import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import type { FindingRecord, DecisionRecord } from "@narc/shared";
 import { IncidentCard } from "../../../components/IncidentCard";
 import { verdictColor } from "../../../lib/utils";
@@ -11,9 +12,11 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 export default function IncidentPage({ params }: { params: Promise<{ findingId: string }> }) {
   const { findingId } = use(params);
+  const account = useCurrentAccount();
+  const agentId = account?.address ?? "trader-a";
 
-  const { data: findingsData } = useSWR("/api/findings", fetcher);
-  const { data: decisionsData } = useSWR("/api/decisions", fetcher);
+  const { data: findingsData } = useSWR(`/api/findings?agentId=${encodeURIComponent(agentId)}`, fetcher);
+  const { data: decisionsData } = useSWR(`/api/decisions?agentId=${encodeURIComponent(agentId)}`, fetcher);
 
   const findings: FindingRecord[] = findingsData?.records ?? [];
   const decisions: DecisionRecord[] = decisionsData?.records ?? [];

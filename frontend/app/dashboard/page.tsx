@@ -39,12 +39,13 @@ export default function DashboardPage() {
   const account = useCurrentAccount();
   const dAppKit = useDAppKit();
 
+  const agentId = account?.address ?? "trader-a";
   const { data: statusData } = useSWR("/api/status", fetcher, { refreshInterval: 3000 });
-  const { data: agentStatusData } = useSWR("/api/agent/status", fetcher, { refreshInterval: 3000 });
-  const { data: findingsData } = useSWR("/api/findings", fetcher, { refreshInterval: 5000 });
-  const { data: decisionsData } = useSWR("/api/decisions", fetcher, { refreshInterval: 5000 });
-  const { data: outcomesData } = useSWR("/api/outcomes", fetcher, { refreshInterval: 5000 });
-  const { data: mandateData, mutate: refetchMandate } = useSWR("/api/mandate", fetcher, { refreshInterval: 10000 });
+  const { data: agentStatusData } = useSWR(`/api/agent/status?agentId=${encodeURIComponent(agentId)}`, fetcher, { refreshInterval: 3000 });
+  const { data: findingsData } = useSWR(`/api/findings?agentId=${encodeURIComponent(agentId)}`, fetcher, { refreshInterval: 5000 });
+  const { data: decisionsData } = useSWR(`/api/decisions?agentId=${encodeURIComponent(agentId)}`, fetcher, { refreshInterval: 5000 });
+  const { data: outcomesData } = useSWR(`/api/outcomes?agentId=${encodeURIComponent(agentId)}`, fetcher, { refreshInterval: 5000 });
+  const { data: mandateData, mutate: refetchMandate } = useSWR(`/api/mandate?agentId=${encodeURIComponent(agentId)}`, fetcher, { refreshInterval: 10000 });
   const { data: priceData } = useSWR("/api/price", fetcher, { refreshInterval: 10000 });
   const { data: balanceData } = useSWR("/api/balance", fetcher, { refreshInterval: 15000 });
 
@@ -108,7 +109,7 @@ export default function DashboardPage() {
         digest = data.digest;
       }
 
-      await fetch("/api/agent/restart", { method: "POST" });
+      await fetch("/api/agent/restart", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId }) });
       setResumeSuccess({ digest });
       return { digest };
     } catch (err) {
@@ -127,7 +128,7 @@ export default function DashboardPage() {
       const res = await fetch("/api/mandate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+        body: JSON.stringify({ ...values, agentId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
@@ -142,14 +143,14 @@ export default function DashboardPage() {
 
   async function handleStop() {
     setStoppingAgent(true);
-    await fetch("/api/agent/stop", { method: "POST" });
+    await fetch("/api/agent/stop", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId }) });
     setAgentStopped(true);
     setStoppingAgent(false);
   }
 
   async function handleRestart() {
     setAgentStopped(false);
-    await fetch("/api/agent/restart", { method: "POST" });
+    await fetch("/api/agent/restart", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId }) });
   }
 
   const ld = latestDecision as Record<string, unknown> | undefined;

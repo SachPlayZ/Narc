@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
+import { useCurrentAccount } from "@mysten/dapp-kit-react";
 import type { DecisionRecord, FindingRecord, OutcomeRecord } from "@narc/shared";
 import { TickDots } from "../../components/TickDots";
 import { TickDetail } from "../../components/TickDetail";
@@ -11,9 +12,11 @@ import { BlobChain } from "../../components/BlobChain";
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 export default function HistoryPage() {
-  const { data: decisionsData } = useSWR("/api/decisions", fetcher);
-  const { data: outcomesData } = useSWR("/api/outcomes", fetcher);
-  const { data: findingsData } = useSWR("/api/findings", fetcher);
+  const account = useCurrentAccount();
+  const agentId = account?.address ?? "trader-a";
+  const { data: decisionsData } = useSWR(`/api/decisions?agentId=${encodeURIComponent(agentId)}`, fetcher);
+  const { data: outcomesData } = useSWR(`/api/outcomes?agentId=${encodeURIComponent(agentId)}`, fetcher);
+  const { data: findingsData } = useSWR(`/api/findings?agentId=${encodeURIComponent(agentId)}`, fetcher);
 
   const [cursor, setCursor] = useState(0);
 

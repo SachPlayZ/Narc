@@ -81,7 +81,7 @@ export function PriceChart({ decisions, outcomes, currentPrice }: Props) {
         <Tooltip
           contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 6, fontSize: 11 }}
           labelStyle={{ color: "#a1a1aa" }}
-          formatter={(value: number, name: string) => [formatPrice(value), name]}
+          formatter={(value, name) => [typeof value === "number" ? formatPrice(value) : String(value ?? ""), String(name ?? "")]}
           labelFormatter={(label) => `Tick #${label}`}
         />
         {currentPrice && (

@@ -5,9 +5,11 @@ import Link from "next/link";
 import useSWR from "swr";
 import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { Transaction } from "@mysten/sui/transactions";
-import type { DecisionRecord, FindingRecord, MandateArtifact } from "@narc/shared";
+import type { DecisionRecord, FindingRecord, MandateArtifact, OutcomeRecord } from "@narc/shared";
 import { AgentStatusBanner } from "../../components/AgentStatusBanner";
 import { RiskSparkline } from "../../components/RiskSparkline";
+import { PriceChart } from "../../components/PriceChart";
+import { BalancePanel } from "../../components/BalancePanel";
 import { IncidentCard } from "../../components/IncidentCard";
 import { ResumeActions } from "../../components/ResumeActions";
 import { MandateForm, type MandateFormValues } from "../../components/MandateForm";
@@ -41,7 +43,10 @@ export default function DashboardPage() {
   const { data: agentStatusData } = useSWR("/api/agent/status", fetcher, { refreshInterval: 3000 });
   const { data: findingsData } = useSWR("/api/findings", fetcher, { refreshInterval: 5000 });
   const { data: decisionsData } = useSWR("/api/decisions", fetcher, { refreshInterval: 5000 });
+  const { data: outcomesData } = useSWR("/api/outcomes", fetcher, { refreshInterval: 5000 });
   const { data: mandateData, mutate: refetchMandate } = useSWR("/api/mandate", fetcher, { refreshInterval: 10000 });
+  const { data: priceData } = useSWR("/api/price", fetcher, { refreshInterval: 10000 });
+  const { data: balanceData } = useSWR("/api/balance", fetcher, { refreshInterval: 15000 });
 
   const [resumeLoading, setResumeLoading] = useState(false);
   const [resumeError, setResumeError] = useState<string>();
@@ -57,6 +62,8 @@ export default function DashboardPage() {
   const agentRunning: boolean = agentStatusData?.traderRunning ?? false;
   const findings: FindingRecord[] = findingsData?.records ?? [];
   const decisions: DecisionRecord[] = decisionsData?.records ?? [];
+  const outcomes: OutcomeRecord[] = outcomesData?.records ?? [];
+  const currentPrice: number | undefined = priceData?.midPrice;
   const latestFinding = findings.at(-1);
   const latestDecision = decisions.at(-1);
   const riskScore: number = latestFinding?.riskScore?.score ?? 0;
@@ -241,44 +248,69 @@ export default function DashboardPage() {
       )}
 
       {!isPaused && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 space-y-3">
-            <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Risk</h2>
-            <RiskSparkline findings={findings} />
-            <p className="font-mono text-sm">
-              <span className={verdictColor(verdict)}>{verdict}</span>
-              <span className="text-zinc-400"> · </span>
-              <span className={scoreColor(riskScore)}>{riskScore}/100</span>
-            </p>
+        <div className="space-y-4">
+          {/* Price chart */}
+          <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Price</h2>
+              {currentPrice ? (
+                <span className="font-mono text-zinc-100 text-sm">
+                  {currentPrice.toFixed(4)}{" "}
+                  <span className="text-zinc-500 text-xs">USDC/SUI · live</span>
+                </span>
+              ) : (
+                <span className="text-zinc-500 text-xs">fetching…</span>
+              )}
+            </div>
+            <PriceChart decisions={decisions} outcomes={outcomes} currentPrice={currentPrice} />
+            <div className="flex gap-4 text-xs text-zinc-500">
+              <span><span className="inline-block w-2 h-2 bg-green-500 rounded-sm mr-1" />buy executed</span>
+              <span><span className="inline-block w-2 h-2 bg-red-500 rounded-sm mr-1" />sell executed</span>
+              <span><span className="inline-block w-2 h-2 bg-zinc-600 rounded-sm mr-1" />aborted</span>
+            </div>
           </div>
 
-          <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 space-y-3">
-            <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Last activity</h2>
-            {latestDecision && ldIntent ? (
-              <>
-                <p className="text-zinc-300 text-sm">
-                  Last trade{" "}
-                  <span className="text-zinc-400">{timeAgo(ld!.ts as number)}</span>
-                </p>
-                <p className="font-mono text-sm text-zinc-100">
-                  {String(ldIntent.side).toUpperCase()} {String(ldIntent.pair)} · {Number(ldIntent.sizeQuote).toFixed(2)} USDC @ {Number(ldIntent.limitPrice).toFixed(4)}
-                </p>
-                {ld!.reasoning && (
-                  <p className="text-zinc-400 text-sm italic">
-                    {String(ld!.reasoning).slice(0, 120)}…
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Balance + P&L */}
+            <BalancePanel balance={balanceData} outcomes={outcomes} currentPrice={currentPrice} />
+
+            {/* Risk */}
+            <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 space-y-3">
+              <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Risk</h2>
+              <RiskSparkline findings={findings} />
+              <p className="font-mono text-sm">
+                <span className={verdictColor(verdict)}>{verdict}</span>
+                <span className="text-zinc-400"> · </span>
+                <span className={scoreColor(riskScore)}>{riskScore}/100</span>
+              </p>
+            </div>
+
+            {/* Last activity */}
+            <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 space-y-3">
+              <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Last trade</h2>
+              {latestDecision && ldIntent ? (
+                <>
+                  <p className="text-zinc-400 text-xs">{timeAgo(ld!.ts as number)}</p>
+                  <p className="font-mono text-sm text-zinc-100">
+                    {String(ldIntent.side).toUpperCase()} {String(ldIntent.pair)}
                   </p>
-                )}
-                <p className="text-xs text-zinc-500">
-                  Session total{" "}
-                  <span className="font-mono text-zinc-300">{sessionTotal.toFixed(2)} USDC</span>
-                  {mandate && (
-                    <span> of {mandate.maxCumulativeNotionalQuote} USDC daily limit</span>
+                  <p className="font-mono text-xs text-zinc-300">
+                    {Number(ldIntent.sizeQuote).toFixed(2)} USDC @ {Number(ldIntent.limitPrice).toFixed(4)}
+                  </p>
+                  {ld!.reasoning && (
+                    <p className="text-zinc-400 text-xs italic leading-relaxed">
+                      {String(ld!.reasoning).slice(0, 100)}…
+                    </p>
                   )}
-                </p>
-              </>
-            ) : (
-              <p className="text-zinc-500 text-sm">No trades yet</p>
-            )}
+                  <p className="text-xs text-zinc-500">
+                    <span className="font-mono text-zinc-300">{sessionTotal.toFixed(2)}</span>
+                    {mandate && <span> / {mandate.maxCumulativeNotionalQuote} USDC</span>}
+                  </p>
+                </>
+              ) : (
+                <p className="text-zinc-500 text-sm">No trades yet</p>
+              )}
+            </div>
           </div>
         </div>
       )}

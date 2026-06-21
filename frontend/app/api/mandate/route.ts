@@ -1,6 +1,5 @@
 import { createMandateArtifact, MandateArtifactSchema, MandateSchema } from "@narc/shared";
 import { supabase } from "@/lib/supabase";
-import { proxyToAgent } from "@/lib/agent-proxy";
 
 export const dynamic = "force-dynamic";
 
@@ -9,10 +8,6 @@ const AGENT_ID = process.env.NARC_AGENT_ID ?? "trader-a";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-
-    // When agent server is configured, it handles disk write + Supabase sync
-    const proxy = await proxyToAgent("/mandate", "POST", body);
-    if (proxy) return new Response(proxy.body, { status: proxy.status, headers: { "Content-Type": "application/json" } });
 
     const {
       maxNotionalQuote,
@@ -54,14 +49,16 @@ export async function POST(request: Request) {
 
     const artifact = createMandateArtifact(mandate);
 
-    if (supabase) {
-      const { error } = await supabase.from("narc_mandates").upsert({
-        agent_id: AGENT_ID,
-        ts: artifact.writtenAt,
-        data: artifact,
-      });
-      if (error) console.error("[mandate POST] supabase upsert failed:", error);
+    if (!supabase) {
+      return Response.json({ error: "Supabase not configured" }, { status: 503 });
     }
+
+    const { error } = await supabase.from("narc_mandates").upsert({
+      agent_id: AGENT_ID,
+      ts: artifact.writtenAt,
+      data: artifact,
+    });
+    if (error) throw new Error(error.message);
 
     return Response.json({ artifact, onChainTx: null });
   } catch (err) {
@@ -70,26 +67,22 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  // Prefer Supabase for reads (works from both Vercel and local)
-  if (supabase) {
-    const { data, error } = await supabase
-      .from("narc_mandates")
-      .select("data")
-      .eq("agent_id", AGENT_ID)
-      .single();
-    if (!error && data) {
-      try {
-        const artifact = MandateArtifactSchema.parse(data.data);
-        return Response.json({ artifact, exists: true });
-      } catch {
-        // fall through
-      }
-    }
+  if (!supabase) {
+    return Response.json({ artifact: null, exists: false });
   }
 
-  // Local fallback: ask the agent server
-  const proxy = await proxyToAgent("/mandate", "GET");
-  if (proxy) return new Response(proxy.body, { status: proxy.status, headers: { "Content-Type": "application/json" } });
+  const { data, error } = await supabase
+    .from("narc_mandates")
+    .select("data")
+    .eq("agent_id", AGENT_ID)
+    .single();
 
-  return Response.json({ artifact: null, exists: false });
+  if (error || !data) return Response.json({ artifact: null, exists: false });
+
+  try {
+    const artifact = MandateArtifactSchema.parse(data.data);
+    return Response.json({ artifact, exists: true });
+  } catch {
+    return Response.json({ artifact: null, exists: false });
+  }
 }

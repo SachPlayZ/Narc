@@ -5,6 +5,7 @@ import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { Transaction } from "@mysten/sui/transactions";
 import useSWR from "swr";
 import { shortAddr } from "../lib/utils";
+import { addDeposit } from "../lib/deposits";
 
 type Props = {
   suiBalance: string;
@@ -80,8 +81,9 @@ export function FundingPanel({ suiBalance, balanceManagerId, onStart, isStarting
       tx.transferObjects([coin], tx.pure.address(traderAddress));
       const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
       if (result.FailedTransaction) throw new Error(result.FailedTransaction.status.error?.message ?? "Transaction failed");
-      setDepositTx(result.Transaction.digest);
-      // wait a beat then refetch balance panel via parent revalidation
+      const digest = result.Transaction.digest;
+      setDepositTx(digest);
+      addDeposit({ wallet: account.address, amount: sui, digest, ts: Date.now() });
       setTimeout(() => refetchTrader(), 3000);
     } catch (err) {
       setDepositError(err instanceof Error ? err.message : String(err));

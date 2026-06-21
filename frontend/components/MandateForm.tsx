@@ -23,7 +23,7 @@ const DEFAULTS: MandateFormValues = {
   maxNotionalQuote: 5,
   maxCumulativeNotionalQuote: 25,
   allowedPairs: ["SUI_DBUSDC"],
-  allowedSide: undefined,
+  allowedSide: "bid",
   maxSlippageBps: 50,
   expiresInHours: 24,
 };

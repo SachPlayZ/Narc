@@ -1,5 +1,6 @@
 import { createMandateArtifact, MandateArtifactSchema, MandateSchema } from "@narc/shared";
 import { supabase } from "@/lib/supabase";
+import { proxyToAgent } from "@/lib/agent-proxy";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,10 @@ const AGENT_ID = process.env.NARC_AGENT_ID ?? "trader-a";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+
+    // When agent server is configured, it handles disk write + Supabase sync
+    const proxy = await proxyToAgent("/mandate", "POST", body);
+    if (proxy) return new Response(proxy.body, { status: proxy.status, headers: { "Content-Type": "application/json" } });
 
     const {
       maxNotionalQuote,
@@ -55,39 +60,17 @@ export async function POST(request: Request) {
         ts: artifact.writtenAt,
         data: artifact,
       });
-      if (error) {
-        console.error("[mandate POST] supabase upsert failed:", error);
-      }
+      if (error) console.error("[mandate POST] supabase upsert failed:", error);
     }
 
-    // On-chain mandate hash update — only available when running locally with pnpm/tsx
-    let onChainTx: { digest: string; explorer: string } | null = null;
-    if (process.env.NARC_POLICY_PACKAGE_ID && process.env.OWNER_CAP_ID && !process.env.VERCEL) {
-      try {
-        const { execFile } = await import("node:child_process");
-        const { promisify } = await import("node:util");
-        const { resolve } = await import("node:path");
-        const execFileAsync = promisify(execFile);
-        const root = resolve(process.cwd(), "..");
-        const { stdout } = await execFileAsync(
-          "pnpm",
-          ["--filter", "@narc/trader", "exec", "tsx", "scripts/set-mandate-hash.ts", `0x${artifact.mandateHash}`],
-          { cwd: root, env: process.env, timeout: 30_000 }
-        );
-        onChainTx = JSON.parse(stdout.trim());
-      } catch (err) {
-        console.error("[mandate POST] set-mandate-hash failed:", err);
-        onChainTx = null;
-      }
-    }
-
-    return Response.json({ artifact, onChainTx });
+    return Response.json({ artifact, onChainTx: null });
   } catch (err) {
     return Response.json({ error: String(err) }, { status: 500 });
   }
 }
 
 export async function GET() {
+  // Prefer Supabase for reads (works from both Vercel and local)
   if (supabase) {
     const { data, error } = await supabase
       .from("narc_mandates")
@@ -103,5 +86,10 @@ export async function GET() {
       }
     }
   }
+
+  // Local fallback: ask the agent server
+  const proxy = await proxyToAgent("/mandate", "GET");
+  if (proxy) return new Response(proxy.body, { status: proxy.status, headers: { "Content-Type": "application/json" } });
+
   return Response.json({ artifact: null, exists: false });
 }

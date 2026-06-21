@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { proxyToAgent } from "@/lib/agent-proxy";
 
 export const dynamic = "force-dynamic";
 
@@ -11,23 +12,16 @@ function activityDir(): string {
 }
 
 function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
+  try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
 export async function GET() {
+  const proxy = await proxyToAgent("/status", "GET");
+  if (proxy) return new Response(proxy.body, { status: proxy.status, headers: { "Content-Type": "application/json" } });
+
   const pidFile = join(activityDir(), "agent.pid");
   if (!existsSync(pidFile)) {
-    return Response.json({
-      traderRunning: false,
-      narcRunning: false,
-      traderPid: null,
-      narcPid: null,
-    });
+    return Response.json({ traderRunning: false, narcRunning: false, traderPid: null, narcPid: null });
   }
 
   try {
@@ -39,11 +33,6 @@ export async function GET() {
       narcPid: narcPid ?? null,
     });
   } catch {
-    return Response.json({
-      traderRunning: false,
-      narcRunning: false,
-      traderPid: null,
-      narcPid: null,
-    });
+    return Response.json({ traderRunning: false, narcRunning: false, traderPid: null, narcPid: null });
   }
 }

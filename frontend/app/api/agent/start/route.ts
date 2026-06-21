@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
+import { proxyToAgent } from "@/lib/agent-proxy";
 
 export const dynamic = "force-dynamic";
 
@@ -11,27 +12,13 @@ function activityDir(): string {
   return resolve(cwd, "../.narc/activity");
 }
 
-function repoRoot(): string {
-  const cwd = /*turbopackIgnore: true*/ process.cwd();
-  return resolve(cwd, "..");
-}
-
 function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
+  try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
 export async function POST() {
-  if (process.env.VERCEL) {
-    return Response.json(
-      { error: "Agent processes cannot be started from a Vercel deployment. Run the trader and auditor locally." },
-      { status: 501 }
-    );
-  }
+  const proxy = await proxyToAgent("/start", "POST");
+  if (proxy) return new Response(proxy.body, { status: proxy.status, headers: { "Content-Type": "application/json" } });
 
   const dir = activityDir();
   const pidFile = join(dir, "agent.pid");
@@ -53,26 +40,19 @@ export async function POST() {
   }
 
   mkdirSync(dir, { recursive: true });
-  const root = repoRoot();
+  const root = resolve(/*turbopackIgnore: true*/ process.cwd(), "..");
 
   const trader = spawn("pnpm", ["--filter", "@narc/trader", "a:loop"], {
-    cwd: root,
-    detached: true,
-    stdio: "ignore",
-    env: process.env,
+    cwd: root, detached: true, stdio: "ignore", env: process.env,
   });
   trader.unref();
 
   const narc = spawn("pnpm", ["--filter", "@narc/auditor", "narc:run"], {
-    cwd: root,
-    detached: true,
-    stdio: "ignore",
-    env: process.env,
+    cwd: root, detached: true, stdio: "ignore", env: process.env,
   });
   narc.unref();
 
   const pids = { traderPid: trader.pid ?? null, narcPid: narc.pid ?? null };
   writeFileSync(pidFile, JSON.stringify(pids));
-
   return Response.json(pids);
 }

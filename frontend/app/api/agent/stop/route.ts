@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { proxyToAgent } from "@/lib/agent-proxy";
 
 export const dynamic = "force-dynamic";
 
@@ -11,21 +12,17 @@ function activityDir(): string {
 }
 
 export async function POST() {
-  const pidFile = join(activityDir(), "agent.pid");
+  const proxy = await proxyToAgent("/stop", "POST");
+  if (proxy) return new Response(proxy.body, { status: proxy.status, headers: { "Content-Type": "application/json" } });
 
-  if (!existsSync(pidFile)) {
-    return Response.json({ stopped: true });
-  }
+  const pidFile = join(activityDir(), "agent.pid");
+  if (!existsSync(pidFile)) return Response.json({ stopped: true });
 
   try {
     const { traderPid, narcPid } = JSON.parse(readFileSync(pidFile, "utf8"));
     for (const pid of [traderPid, narcPid]) {
       if (typeof pid === "number") {
-        try {
-          process.kill(pid, "SIGTERM");
-        } catch {
-          // already dead
-        }
+        try { process.kill(pid, "SIGTERM"); } catch { /* already dead */ }
       }
     }
     rmSync(pidFile, { force: true });

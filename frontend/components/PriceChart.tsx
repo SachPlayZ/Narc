@@ -34,7 +34,7 @@ export function PriceChart({ decisions, outcomes, currentPrice }: Props) {
     const outcome = outcomeMap.get(d.recordId);
     const executed = outcome?.executed ?? false;
     const side = d.intent.side;
-    const price = d.midPrice;
+    const price = d.observation.midPrice;
 
     return {
       tick: d.tick,

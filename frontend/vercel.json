@@ -1,0 +1,4 @@
+{
+  "installCommand": "cd .. && pnpm install",
+  "buildCommand": "cd .. && pnpm --filter @narc/shared build && pnpm --filter frontend build"
+}

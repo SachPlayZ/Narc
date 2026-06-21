@@ -1,5 +1,0 @@
-{
-  "buildCommand": "pnpm --filter @narc/shared build && pnpm --filter frontend build",
-  "outputDirectory": "frontend/.next",
-  "installCommand": "pnpm install"
-}

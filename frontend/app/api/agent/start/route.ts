@@ -26,6 +26,13 @@ function pidAlive(pid: number): boolean {
 }
 
 export async function POST() {
+  if (process.env.VERCEL) {
+    return Response.json(
+      { error: "Agent processes cannot be started from a Vercel deployment. Run the trader and auditor locally." },
+      { status: 501 }
+    );
+  }
+
   const dir = activityDir();
   const pidFile = join(dir, "agent.pid");
 

@@ -4,7 +4,7 @@ module.exports = {
       name: "agent-server",
       script: "pnpm",
       args: "--filter @narc/agent-server start",
-      cwd: "/home/ubuntu/narc",
+      cwd: "/home/ec2-user/narc",
       interpreter: "none",
       autorestart: true,
       restart_delay: 3000,

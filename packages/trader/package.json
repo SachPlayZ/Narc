@@ -33,6 +33,7 @@
     "@mysten/sui": "^2.19.0",
     "@narc/memory": "workspace:*",
     "@narc/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.108.2",
     "zod": "^4.2.1"
   },
   "devDependencies": {

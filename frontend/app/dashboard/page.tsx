@@ -1,19 +1,19 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { useCurrentAccount, useDAppKit } from "@mysten/dapp-kit-react";
 import { Transaction } from "@mysten/sui/transactions";
 import type { DecisionRecord, FindingRecord, MandateArtifact, OutcomeRecord } from "@narc/shared";
-import { AgentStatusBanner } from "../../components/AgentStatusBanner";
 import { RiskSparkline } from "../../components/RiskSparkline";
 import { PriceChart } from "../../components/PriceChart";
-import { BalancePanel } from "../../components/BalancePanel";
 import { IncidentCard } from "../../components/IncidentCard";
 import { ResumeActions } from "../../components/ResumeActions";
 import { MandateForm, type MandateFormValues } from "../../components/MandateForm";
-import { shortAddr, explorerUrl, verdictColor, scoreColor, timeAgo } from "../../lib/utils";
+import { Logo, Pill, StatusPill, FooterRail, EdgeDots, appAsset } from "../../components/Chrome";
+import { shortAddr, explorerUrl, timeAgo } from "../../lib/utils";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -33,6 +33,34 @@ function buildResumeTx(reason: string): Transaction {
     ],
   });
   return tx;
+}
+
+/** Bordered Nothing-style panel with a mono section label. */
+function Panel({
+  label,
+  right,
+  children,
+  className = "",
+}: {
+  label: string;
+  right?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`rounded-[12px] border border-white/10 bg-white/[0.015] p-4 sm:p-5 ${className}`}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-500">{label}</h2>
+        {right}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function shortWallet(address?: string) {
+  if (!address) return "NOT CONNECTED";
+  return `${address.slice(0, 4)}...${address.slice(-4)}`;
 }
 
 export default function DashboardPage() {
@@ -84,17 +112,30 @@ export default function DashboardPage() {
     return sum;
   }, 0);
 
+  const executedOutcomes = outcomes.filter((o) => o.executed);
+  let netUsdcFlow = 0;
+  let totalVolume = 0;
+  for (const o of executedOutcomes) {
+    const size = ((o as Record<string, unknown>).sizeQuote as number) ?? 0;
+    const side = (o as Record<string, unknown>).side as string | undefined;
+    totalVolume += size;
+    if (side === "bid") netUsdcFlow -= size;
+    if (side === "ask") netUsdcFlow += size;
+  }
+  const suiVal = currentPrice && balanceData?.suiBalance
+    ? (parseFloat(balanceData.suiBalance) * currentPrice).toFixed(2)
+    : null;
+
   const mandate = artifact?.mandate;
-  const mandateSummary = mandate
-    ? `${mandate.allowedPairs?.[0]?.replace("_", "/") ?? "SUI/USDC"} · ${mandate.allowedSide ? mandate.allowedSide.toUpperCase() + " only" : "Both"} · max ${mandate.maxNotionalQuote} USDC/trade`
-    : "";
+
+  const agentState: "running" | "paused" | "stopped" =
+    isPaused ? "paused" : agentRunning && !agentStopped ? "running" : "stopped";
 
   async function handleOverrideResume(reason: string): Promise<{ digest: string }> {
     setResumeLoading(true);
     setResumeError(undefined);
     try {
       let digest: string;
-
       if (account) {
         const tx = buildResumeTx(reason);
         const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
@@ -108,7 +149,6 @@ export default function DashboardPage() {
         if (!res.ok) throw new Error(data.error ?? "Resume failed");
         digest = data.digest;
       }
-
       await fetch("/api/agent/restart", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId }) });
       setResumeSuccess({ digest });
       return { digest };
@@ -155,199 +195,234 @@ export default function DashboardPage() {
 
   const ld = latestDecision as Record<string, unknown> | undefined;
   const ldIntent = ld?.intent as Record<string, unknown> | undefined;
+  const showBanner = isPaused || agentStopped;
 
   return (
-    <div className="min-h-screen p-6 max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-zinc-100">Narc</h1>
-        <div className="flex gap-4 text-sm">
-          <Link href="/mandate" className="text-zinc-400 hover:text-zinc-200 transition-colors">
-            Mandate →
-          </Link>
-          <Link href="/history" className="text-zinc-400 hover:text-zinc-200 transition-colors">
-            History →
-          </Link>
-        </div>
-      </div>
+    <div className="relative min-h-screen overflow-hidden bg-[#050505] text-zinc-100">
+      <EdgeDots />
 
-      <AgentStatusBanner running={agentRunning && !agentStopped} paused={isPaused} mandateSummary={mandateSummary} />
-
-      {isPaused && !keepPaused && (
-        <div className="bg-red-900/40 border border-red-600 rounded-lg p-6 space-y-6">
-          <div>
-            <h2 className="text-2xl font-bold text-red-300">⬛ AGENT PAUSED</h2>
-            <p className="text-zinc-300 mt-1">
-              Narc detected a breach and paused your agent on-chain.
-            </p>
+      <header className="border-b border-white/10 px-4 py-4 sm:px-8">
+        <div className="mx-auto flex w-full max-w-[1680px] items-center justify-between gap-4">
+          <div className="flex items-center gap-5">
+            <Logo />
+            <nav className="hidden items-center gap-4 border-l border-white/10 pl-5 font-mono text-[12px] uppercase tracking-[0.12em] sm:flex">
+              <Link href="/mandate" className="text-zinc-500 transition-colors hover:text-zinc-200">Mandate</Link>
+              <Link href="/history" className="text-zinc-200 transition-colors hover:text-white">History</Link>
+            </nav>
           </div>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <Pill icon={<img src={appAsset("icon-sui.svg")} alt="" className="h-3.5 w-3.5" />} label="Sui Mainnet" dotClassName="bg-[#36d46c]" />
+            <StatusPill status={agentState} />
+            <Pill icon={<img src={appAsset("icon-wallet.svg")} alt="" className="h-3.5 w-3.5" />} label={shortWallet(account?.address)} />
+          </div>
+        </div>
+      </header>
 
-          {lastBreachFinding && (
-            <IncidentCard finding={lastBreachFinding} decisions={decisions} />
+      <main className="px-4 py-5 sm:px-8">
+        <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4">
+          {/* Agent state banner */}
+          {showBanner && (
+            <div className="flex flex-col gap-4 rounded-[12px] border border-[#ff3b1f]/45 bg-[#150605] p-5">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <img src={appAsset("icon-stop.svg")} alt="" className="h-11 w-11" />
+                  <div>
+                    <div className="font-mono text-[15px] uppercase tracking-[0.16em] text-[#ff5a45]">
+                      {isPaused ? "Agent Paused" : "Agent Stopped"}
+                    </div>
+                    <div className="mt-1 font-mono text-[12px] text-zinc-500">
+                      {isPaused ? "Trading paused by policy" : "Trading halted by owner"}
+                    </div>
+                  </div>
+                </div>
+                {isPaused && !resumeSuccess && !showMandateEdit && !keepPaused ? (
+                  <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+                    Owner override required ↓
+                  </span>
+                ) : !isPaused ? (
+                  <button
+                    onClick={handleRestart}
+                    className="inline-flex h-11 items-center gap-3 rounded-[10px] border border-[#ff3b1f] px-5 font-mono text-[13px] uppercase tracking-[0.12em] text-[#ff5a45] transition hover:bg-[#1f0807]"
+                  >
+                    Restart Agent
+                    <img src={appAsset("icon-arrow-right.svg")} alt="" className="h-3 w-auto" />
+                  </button>
+                ) : null}
+              </div>
+
+              {isPaused && lastBreachFinding && <IncidentCard finding={lastBreachFinding} decisions={decisions} />}
+
+              {isPaused && (
+                resumeSuccess ? (
+                  <div className="rounded-[10px] border border-[#36d46c]/40 bg-[#07120a] p-3 font-mono text-[12px] text-[#36d46c]">
+                    Trading resumed · tx{" "}
+                    <a href={explorerUrl(resumeSuccess.digest)} target="_blank" rel="noreferrer" className="underline">
+                      {shortAddr(resumeSuccess.digest)} →
+                    </a>
+                  </div>
+                ) : showMandateEdit ? (
+                  <div className="rounded-[10px] border border-white/10 bg-black/40 p-4">
+                    <h3 className="mb-4 font-mono text-[12px] uppercase tracking-[0.14em] text-zinc-300">Adjust Mandate</h3>
+                    <MandateForm
+                      initialValues={mandate ? {
+                        maxNotionalQuote: mandate.maxNotionalQuote,
+                        maxCumulativeNotionalQuote: mandate.maxCumulativeNotionalQuote,
+                        allowedPairs: mandate.allowedPairs,
+                        allowedSide: mandate.allowedSide as "bid" | "ask" | undefined,
+                        maxSlippageBps: mandate.maxSlippageBps,
+                        expiresInHours: 24,
+                      } : undefined}
+                      onSubmit={async (values) => {
+                        await handleSaveMandate(values);
+                        await handleOverrideResume("Mandate adjusted and resumed");
+                      }}
+                      submitLabel="Save & Resume"
+                      isLoading={mandateEditLoading}
+                      error={mandateEditError}
+                    />
+                    <button onClick={() => setShowMandateEdit(false)} className="mt-2 font-mono text-[11px] text-zinc-500 hover:text-zinc-300">
+                      Cancel
+                    </button>
+                  </div>
+                ) : keepPaused ? (
+                  <button onClick={() => setKeepPaused(false)} className="self-start font-mono text-[12px] uppercase tracking-[0.12em] text-[#ff5a45] hover:text-[#ff7a66]">
+                    Resume when ready →
+                  </button>
+                ) : (
+                  <ResumeActions
+                    onOverrideResume={handleOverrideResume}
+                    onAdjustMandate={() => setShowMandateEdit(true)}
+                    onKeepPaused={() => setKeepPaused(true)}
+                    isLoading={resumeLoading}
+                    error={resumeError}
+                  />
+                )
+              )}
+            </div>
           )}
 
-          {resumeSuccess ? (
-            <div className="p-3 bg-green-900/30 border border-green-700 rounded text-green-300 text-sm">
-              ✓ Trading resumed. Tx:{" "}
-              <a
-                href={explorerUrl(resumeSuccess.digest)}
-                target="_blank"
-                rel="noreferrer"
-                className="text-blue-400 hover:underline font-mono"
-              >
-                {shortAddr(resumeSuccess.digest)} →
-              </a>
-            </div>
-          ) : showMandateEdit ? (
-            <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4">
-              <h3 className="text-zinc-300 font-semibold mb-4">Adjust Mandate</h3>
-              <MandateForm
-                initialValues={mandate ? {
-                  maxNotionalQuote: mandate.maxNotionalQuote,
-                  maxCumulativeNotionalQuote: mandate.maxCumulativeNotionalQuote,
-                  allowedPairs: mandate.allowedPairs,
-                  allowedSide: mandate.allowedSide as "bid" | "ask" | undefined,
-                  maxSlippageBps: mandate.maxSlippageBps,
-                  expiresInHours: 24,
-                } : undefined}
-                onSubmit={async (values) => {
-                  await handleSaveMandate(values);
-                  await handleOverrideResume("Mandate adjusted and resumed");
-                }}
-                submitLabel="Save & Resume"
-                isLoading={mandateEditLoading}
-                error={mandateEditError}
-              />
-              <button
-                onClick={() => setShowMandateEdit(false)}
-                className="mt-2 text-zinc-500 text-sm hover:text-zinc-300"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <ResumeActions
-              onOverrideResume={handleOverrideResume}
-              onAdjustMandate={() => setShowMandateEdit(true)}
-              onKeepPaused={() => setKeepPaused(true)}
-              isLoading={resumeLoading}
-              error={resumeError}
-            />
-          )}
-        </div>
-      )}
-
-      {keepPaused && isPaused && (
-        <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 flex items-center justify-between">
-          <span className="text-zinc-300 text-sm">Agent is paused. Investigate and resume when ready.</span>
-          <button
-            onClick={() => setKeepPaused(false)}
-            className="text-orange-400 hover:text-orange-300 text-sm font-semibold"
-          >
-            Resume when ready
-          </button>
-        </div>
-      )}
-
-      {!isPaused && (
-        <div className="space-y-4">
-          {/* Price chart */}
-          <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Price</h2>
-              {currentPrice ? (
-                <span className="font-mono text-zinc-100 text-sm">
+          {/* Price */}
+          <Panel
+            label="Price"
+            right={
+              currentPrice ? (
+                <span className="font-mono text-[18px] text-zinc-50">
                   {currentPrice.toFixed(4)}{" "}
-                  <span className="text-zinc-500 text-xs">USDC/SUI · live</span>
+                  <span className="text-[11px] uppercase tracking-[0.1em] text-zinc-500">USDC/SUI · live</span>
                 </span>
               ) : (
-                <span className="text-zinc-500 text-xs">fetching…</span>
-              )}
-            </div>
+                <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-zinc-600">fetching…</span>
+              )
+            }
+          >
             <PriceChart decisions={decisions} outcomes={outcomes} currentPrice={currentPrice} />
-            <div className="flex gap-4 text-xs text-zinc-500">
-              <span><span className="inline-block w-2 h-2 bg-green-500 rounded-sm mr-1" />buy executed</span>
-              <span><span className="inline-block w-2 h-2 bg-red-500 rounded-sm mr-1" />sell executed</span>
-              <span><span className="inline-block w-2 h-2 bg-zinc-600 rounded-sm mr-1" />aborted</span>
+            <div className="mt-2 flex gap-5 font-mono text-[10px] uppercase tracking-[0.1em] text-zinc-500">
+              <span><span className="mr-1.5 inline-block h-2 w-2 rounded-[2px] bg-[#36d46c]" />buy executed</span>
+              <span><span className="mr-1.5 inline-block h-2 w-2 rounded-[2px] bg-[#ff3b1f]" />sell executed</span>
+              <span><span className="mr-1.5 inline-block h-2 w-2 rounded-[2px] bg-zinc-600" />aborted</span>
             </div>
-          </div>
+          </Panel>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Balance + P&L */}
-            <BalancePanel balance={balanceData} outcomes={outcomes} currentPrice={currentPrice} walletAddress={account?.address} />
+          {/* Stats row */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {/* Balance */}
+            <Panel label="Balance">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-zinc-500">SUI</p>
+                  <p className="font-mono text-[22px] leading-tight text-zinc-50">{balanceData?.suiBalance ?? "—"}</p>
+                  {suiVal && <p className="font-mono text-[11px] text-zinc-600">≈ ${suiVal}</p>}
+                </div>
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-zinc-500">USDC</p>
+                  <p className="font-mono text-[22px] leading-tight text-zinc-50">{balanceData?.usdcBalance ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-zinc-500">Volume</p>
+                  <p className="font-mono text-[14px] text-zinc-200">{totalVolume.toFixed(2)} USDC</p>
+                </div>
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-zinc-500">Net flow</p>
+                  <p className={`font-mono text-[14px] ${netUsdcFlow >= 0 ? "text-[#36d46c]" : "text-[#ff5a45]"}`}>
+                    {netUsdcFlow >= 0 ? "+" : ""}{netUsdcFlow.toFixed(2)} USDC
+                  </p>
+                </div>
+              </div>
+            </Panel>
 
             {/* Risk */}
-            <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 space-y-3">
-              <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Risk</h2>
+            <Panel label="Risk">
               <RiskSparkline findings={findings} />
-              <p className="font-mono text-sm">
-                <span className={verdictColor(verdict)}>{verdict}</span>
-                <span className="text-zinc-400"> · </span>
-                <span className={scoreColor(riskScore)}>{riskScore}/100</span>
+              <p className="mt-3 font-mono text-[13px]">
+                <span className={verdict === "BREACH" ? "text-[#ff5a45]" : verdict === "WARN" ? "text-[#e9b949]" : "text-[#36d46c]"}>
+                  {verdict}
+                </span>
+                <span className="text-zinc-600"> · </span>
+                <span className={riskScore >= 70 ? "text-[#ff5a45]" : riskScore >= 35 ? "text-[#e9b949]" : "text-[#36d46c]"}>
+                  {riskScore}/100
+                </span>
               </p>
-            </div>
+            </Panel>
 
-            {/* Last activity */}
-            <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4 space-y-3">
-              <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Last trade</h2>
+            {/* Last trade */}
+            <Panel label="Last Trade">
               {latestDecision && ldIntent ? (
-                <>
-                  <p className="text-zinc-400 text-xs">{timeAgo(ld!.ts as number)}</p>
-                  <p className="font-mono text-sm text-zinc-100">
+                <div className="space-y-2">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-zinc-500">{timeAgo(ld!.ts as number)}</p>
+                  <p className="font-mono text-[15px] text-zinc-50">
                     {String(ldIntent.side).toUpperCase()} {String(ldIntent.pair)}
                   </p>
-                  <p className="font-mono text-xs text-zinc-300">
+                  <p className="font-mono text-[12px] text-zinc-300">
                     {Number(ldIntent.sizeQuote).toFixed(2)} USDC @ {Number(ldIntent.limitPrice).toFixed(4)}
                   </p>
-                  {ld!.reasoning && (
-                    <p className="text-zinc-400 text-xs italic leading-relaxed">
-                      {String(ld!.reasoning).slice(0, 100)}…
+                  {Boolean(ld!.reasoning) && (
+                    <p className="font-mono text-[11px] leading-relaxed text-zinc-500">
+                      {String(ld!.reasoning).slice(0, 96)}…
                     </p>
                   )}
-                  <p className="text-xs text-zinc-500">
-                    <span className="font-mono text-zinc-300">{sessionTotal.toFixed(2)}</span>
-                    {mandate && <span> / {mandate.maxCumulativeNotionalQuote} USDC</span>}
-                  </p>
-                </>
+                  <div className="flex items-center gap-2 border-t border-white/10 pt-2 font-mono text-[11px] text-zinc-500">
+                    <img src={appAsset("icon-lock.svg")} alt="" className="h-4 w-4" />
+                    <span className="text-zinc-300">{sessionTotal.toFixed(2)}</span>
+                    {mandate && <span>/ {mandate.maxCumulativeNotionalQuote} USDC</span>}
+                  </div>
+                </div>
               ) : (
-                <p className="text-zinc-500 text-sm">No trades yet</p>
+                <p className="font-mono text-[12px] text-zinc-600">No trades yet</p>
+              )}
+            </Panel>
+          </div>
+
+          {/* Mandate hash + stop control */}
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-[12px] border border-white/10 bg-white/[0.015] px-4 py-3">
+            <div className="flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.1em] text-zinc-500">
+              <img src={appAsset("logo-mark.svg")} alt="" className="h-5 w-5 opacity-70" />
+              <span>Mandate hash</span>
+              <span className="text-zinc-300">{statusData?.mandateHash ? shortAddr(statusData.mandateHash) : "—"}</span>
+              {statusData?.mandateHash && (
+                <span className={hashMatch ? "text-[#36d46c]" : "text-[#e9b949]"}>
+                  {hashMatch ? "✓ Match" : "⚠ Mismatch"}
+                </span>
               )}
             </div>
+            {!agentStopped ? (
+              <button
+                onClick={handleStop}
+                disabled={stoppingAgent}
+                className="inline-flex h-10 items-center gap-2.5 rounded-[10px] border border-[#ff3b1f] px-4 font-mono text-[12px] uppercase tracking-[0.12em] text-[#ff5a45] transition hover:bg-[#1f0807] disabled:opacity-50"
+              >
+                <img src={appAsset("icon-stop-sm.svg")} alt="" className="h-3.5 w-3.5" />
+                {stoppingAgent ? "Stopping…" : "Stop Agent"}
+              </button>
+            ) : (
+              <button onClick={handleRestart} className="font-mono text-[12px] uppercase tracking-[0.12em] text-[#ff5a45] hover:text-[#ff7a66]">
+                Restart →
+              </button>
+            )}
           </div>
         </div>
-      )}
+      </main>
 
-      <div className="flex items-center justify-between text-xs text-zinc-500 pt-2">
-        <div className="flex items-center gap-2 font-mono">
-          <span>Mandate hash</span>
-          {statusData?.mandateHash ? (
-            <span>{shortAddr(statusData.mandateHash)}</span>
-          ) : (
-            <span>—</span>
-          )}
-          {statusData?.mandateHash && (
-            <span className={hashMatch ? "text-green-400" : "text-yellow-400"}>
-              {hashMatch ? "✓ matches" : "⚠ mismatch"}
-            </span>
-          )}
-        </div>
-
-        {!agentStopped ? (
-          <button
-            onClick={handleStop}
-            disabled={stoppingAgent}
-            className="text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
-          >
-            {stoppingAgent ? "Stopping…" : "Stop Agent"}
-          </button>
-        ) : (
-          <div className="flex items-center gap-2">
-            <span>Agent stopped</span>
-            <button onClick={handleRestart} className="text-orange-400 hover:text-orange-300">
-              [Restart]
-            </button>
-          </div>
-        )}
-      </div>
+      <FooterRail right="Narc Verdict" />
     </div>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCurrentAccount } from "@mysten/dapp-kit-react";
@@ -8,10 +7,10 @@ import { ConnectButton } from "@mysten/dapp-kit-react/ui";
 import { MandateForm, type MandateFormValues } from "../../components/MandateForm";
 import { MandatePreview } from "../../components/MandatePreview";
 import { FundingPanel } from "../../components/FundingPanel";
+import { Logo, Pill, FooterRail, EdgeDots, appAsset } from "../../components/Chrome";
 import useSWR from "swr";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
-const asset = (name: string) => `/narc-landing/${name}`;
 
 type Step = 1 | 2 | 3;
 
@@ -22,40 +21,8 @@ const steps: Array<{ value: Step; label: string }> = [
 ];
 
 function shortWallet(address?: string) {
-  if (!address) return "WALLET NOT CONNECTED";
+  if (!address) return "NOT CONNECTED";
   return `${address.slice(0, 4)}...${address.slice(-4)}`;
-}
-
-function ShellIcon({
-  children,
-  className = "text-zinc-100",
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <span className={`inline-flex h-5 w-5 items-center justify-center ${className}`}>
-      {children}
-    </span>
-  );
-}
-
-function HeaderPill({
-  icon,
-  label,
-  dotClassName,
-}: {
-  icon: ReactNode;
-  label: string;
-  dotClassName?: string;
-}) {
-  return (
-    <div className="inline-flex h-9 items-center gap-2 rounded-[10px] border border-white/20 bg-black/55 px-3 text-[10px] uppercase tracking-[0.14em] text-zinc-100 sm:text-[11px]">
-      {icon}
-      <span>{label}</span>
-      {dotClassName ? <span className={`h-2.5 w-2.5 rounded-full ${dotClassName}`} /> : null}
-    </div>
-  );
 }
 
 function StepIndicator({ current }: { current: Step }) {
@@ -96,37 +63,6 @@ function StepIndicator({ current }: { current: Step }) {
   );
 }
 
-function FooterRail() {
-  return (
-    <footer className="border-t border-white/10 px-4 py-3 sm:px-8">
-      <div className="mx-auto flex w-full max-w-[1680px] items-center justify-between gap-4 text-[10px] uppercase tracking-[0.14em] text-zinc-400">
-        <div className="flex items-center gap-4 pl-12 sm:pl-14">
-          <img src={asset("ecosystem-walrus.svg")} alt="" className="h-6 w-6 opacity-80" />
-          <span>Walrus Evidence</span>
-          <span className="h-2.5 w-2.5 rounded-full bg-[#ff4d24]" />
-        </div>
-        <div className="hidden items-center gap-3 md:flex">
-          <div className="h-[1px] w-24 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.45),transparent)]" />
-          <div className="flex items-center gap-3">
-            {Array.from({ length: 13 }).map((_, index) => (
-              <span
-                key={index}
-                className={`block h-4 w-[1px] ${index === 6 ? "bg-[#ff4d24]" : "bg-white/45"}`}
-              />
-            ))}
-          </div>
-          <div className="h-[1px] w-24 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.45),transparent)]" />
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="h-2.5 w-2.5 rounded-full bg-[#ff4d24]" />
-          <span>Sui Enforcement</span>
-          <img src={asset("ecosystem-sui.svg")} alt="" className="h-6 w-6 opacity-80" />
-        </div>
-      </div>
-    </footer>
-  );
-}
-
 export default function OnboardPage() {
   const router = useRouter();
   const account = useCurrentAccount();
@@ -157,11 +93,12 @@ export default function OnboardPage() {
     setMandateLoading(true);
     setMandateError(undefined);
     setMandateSuccess(undefined);
+    const agentId = account?.address ?? "trader-a";
     try {
       const res = await fetch("/api/mandate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+        body: JSON.stringify({ ...values, agentId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
@@ -179,8 +116,9 @@ export default function OnboardPage() {
   async function handleStart() {
     setIsStarting(true);
     setStartError(undefined);
+    const agentId = account?.address ?? "trader-a";
     try {
-      const res = await fetch("/api/agent/start", { method: "POST" });
+      const res = await fetch("/api/agent/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to start agent");
       router.push("/dashboard");
@@ -191,38 +129,23 @@ export default function OnboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#020202] text-zinc-100">
+    <div className="min-h-screen bg-[#050505] text-zinc-100">
       <div className="relative overflow-hidden">
-        <div className="pointer-events-none absolute inset-y-0 left-0 hidden w-48 bg-[radial-gradient(circle,rgba(255,255,255,0.22)_1px,transparent_1.6px)] bg-[length:18px_18px] opacity-40 lg:block" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-48 bg-[radial-gradient(circle,rgba(255,255,255,0.22)_1px,transparent_1.6px)] bg-[length:18px_18px] opacity-40 lg:block" />
+        <EdgeDots />
 
         <header className="border-b border-white/10 px-4 py-4 sm:px-8">
           <div className="mx-auto flex w-full max-w-[1680px] items-center justify-between gap-4">
-            <img src={asset("narc-wordmark.svg")} alt="NARC" className="h-8 w-auto sm:h-9" />
+            <Logo />
             <div className="flex flex-wrap items-center justify-end gap-3">
-              <HeaderPill
-                icon={
-                  <ShellIcon>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-5 w-5">
-                      <path d="M12 3c-2.2 3-6 7-6 11a6 6 0 0 0 12 0c0-4-3.8-8-6-11Z" />
-                    </svg>
-                  </ShellIcon>
-                }
-                label="SUI MAINNET"
-                dotClassName="bg-[#33d85f]"
+              <Pill
+                icon={<img src={appAsset("icon-sui.svg")} alt="" className="h-3.5 w-3.5" />}
+                label="Sui Mainnet"
+                dotClassName="bg-[#36d46c]"
               />
-              <HeaderPill
-                icon={
-                  <ShellIcon>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-5 w-5">
-                      <rect x="3.5" y="6.5" width="17" height="11" rx="2.5" />
-                      <path d="M7 10.5h7" />
-                      <path d="M17 12h.01" />
-                    </svg>
-                  </ShellIcon>
-                }
+              <Pill
+                icon={<img src={appAsset("icon-wallet.svg")} alt="" className="h-3.5 w-3.5" />}
                 label={shortWallet(account?.address)}
-                dotClassName={account ? "bg-[#ff4d24]" : undefined}
+                dotClassName={account ? "bg-[#ff3b1f]" : undefined}
               />
             </div>
           </div>
@@ -235,9 +158,11 @@ export default function OnboardPage() {
             {currentStep === 1 && (
               <section className="flex min-h-[46vh] flex-col items-center justify-center px-4 py-4 text-center">
                 <div className="pointer-events-none mb-4 h-4 w-40 bg-[radial-gradient(circle,rgba(255,255,255,0.7)_1px,transparent_1.6px)] bg-[length:18px_18px] bg-center bg-no-repeat opacity-90" />
-                <img src={asset("narc-wordmark.svg")} alt="NARC" className="mb-6 h-auto w-full max-w-[320px]" />
+                <h1 className="font-display mb-6 text-[88px] font-bold leading-none tracking-[0.06em] text-zinc-50 sm:text-[140px]">
+                  NARC
+                </h1>
                 <p className="max-w-[680px] font-mono text-[22px] leading-tight tracking-[0.04em] text-zinc-100 sm:text-[32px]">
-                  Set the rules. We enforce them<span className="text-[#ff4d24]">.</span>
+                  Set the rules. We enforce them<span className="text-[#ff3b1f]">.</span>
                 </p>
                 <div className="my-5 h-[1px] w-40 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.45),transparent)]" />
                 <p className="max-w-[620px] font-mono text-[15px] leading-relaxed text-zinc-400 sm:text-[17px]">
